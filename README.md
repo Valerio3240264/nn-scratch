@@ -9,8 +9,8 @@ This documentation describes a simple neural network implementation built from s
 
 ## Table of Contents
 
-1. [Value Class](value.md) - The automatic differentiation engine
-2. [Neuron Class](neuron.md) - Individual neuron implementation
-3. [Layer Class](layer.md) - Neural network layer implementation
-4. [MLP Class](mlp.md) - Multi-layer perceptron implementation
-5. [Usage Examples](examples.md) - Examples of using the neural network 
+1. [Value Class](/doc/value.md) - The automatic differentiation engine
+2. [Neuron Class](/doc/neuron.md) - Individual neuron implementation
+3. [Layer Class](/doc/layer.md) - Neural network layer implementation
+4. [MLP Class](/doc/mlp.md) - Multi-layer perceptron implementation
+5. [Usage Examples](/doc/examples.md) - Examples of using the neural network 
