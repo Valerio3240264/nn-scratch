@@ -1,0 +1,15 @@
+{
+  "files.associations": {
+    "*.tcc": "cpp",
+    "chrono": "cpp",
+    "vector": "cpp",
+    "memory": "cpp",
+    "optional": "cpp",
+    "string_view": "cpp",
+    "functional": "cpp",
+    "random": "cpp",
+    "format": "cpp",
+    "system_error": "cpp",
+    "variant": "cpp"
+  }
+}
