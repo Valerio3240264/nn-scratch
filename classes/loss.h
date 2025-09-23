@@ -6,6 +6,42 @@
 #include <cmath>
 #include "virtual_classes.h"
 
+/*TODO
+1: Write a backward function that does not need to know the derivatives value since it is the first step of the backward pass and the derivatives are known.
+1: Create a function to evaluate the loss of a whole batch.
+2: Create a function to evaluate the gradient of a whole batch.
+3: Optimize the batch operations using personalized cuda kernels.
+*/
+
+/*
+LOSS CLASS DOCUMENTATION:
+PURPOSE:
+This class is used to store the loss value and the gradients of the loss function.
+It also stores a pointer to the target values and the predecessor pointer to perform the backward pass on the whole neural network.
+
+Attributes:
+- pred: pointer to the predecessor (this pointer can be seen as an edge in the computational graph of the neural network)
+- target: pointer to the target values
+- grad: pointer to the gradients
+- loss_value: pointer to the loss values
+- size: size of the loss_value and grad arrays
+
+Constructors:
+- loss(BackwardClass *pred, int size): creates a new array for the gradients and loss value arrays and sets the predecessor to the passed pointer (The target pointer will be set when the operator() is called).
+- loss(BackwardClass *pred, int size, double *target): creates a new array for the gradients and loss value arrays and sets the predecessor to the passed pointer and the target to the passed pointer.
+
+Methods:
+- operator()(double *target): sets the target values and calculates the loss value.
+- operator()(): calculates the loss value.
+- zero_grad(): sets all the gradients to 0.
+- backward(double *derivatives): accumulates the gradients and propagates them to the predecessor.
+- print_loss(): prints the loss value.
+- print_grad(): prints the gradients.
+
+*/
+
+using namespace std;  
+
 class loss: public BackwardClass{
   private:
     BackwardClass *pred;

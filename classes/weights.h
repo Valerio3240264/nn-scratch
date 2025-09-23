@@ -3,6 +3,40 @@
 #include "input.h"
 #include "virtual_classes.h"
 
+/* TODO 
+1: Optimize the matrix multiplication using a personalized CUDA kernel.
+2: Optimize the gradient computation using a personalized CUDA kernel.
+3: Create a function to evaluate to process a whole batch of data (not only one single data point).
+4: Create a function to evaluate the gradient of a whole batch.
+5: Optimize the batch operations using personalized cuda kernels.
+*/
+
+/*
+WEIGHTS CLASS DOCUMENTATION:
+PURPOSE:
+This class is used to store the weights of a layer and perform the matrix multiplication between the weights and the input values.
+It also stores the gradients of the weights and the input values to perform the backward pass on the whole neural network.
+
+Attributes:
+- w: pointer to the weights array
+- grad_w: pointer to the gradients array
+- input_size: size of the input values
+- output_size: size of the output values
+- input_values: pointer to the input values
+- pred: pointer to the predecessor (this pointer can be seen as an edge in the computational graph of the neural network)
+
+Constructors:
+- weights(int input_size, int output_size): creates a new array for the weights and gradients arrays and sets the predecessor to nullptr.
+
+Methods:
+- values_pointer(): returns the pointer to the weights array.
+- grad_pointer(): returns the pointer to the gradients array.
+- operator()(BackwardClass *in): performs the matrix multiplication between the weights and the input values.
+- zero_grad(): sets all the gradients to 0.
+- backward(double *derivatives): accumulates the gradients and propagates them to the predecessor.
+- update(double learning_rate): updates the weights using the computed gradients.
+*/
+
 using namespace std;
 
 class weights: public BackwardClass{
@@ -107,7 +141,7 @@ void weights::backward(double *derivatives){
 // Update the weights
 void weights::update(double learning_rate){
   for (int i = 0; i < this->input_size * this->output_size; i++){
-    this->w[i] += learning_rate * this->grad_w[i];
+    this->w[i] -= learning_rate * this->grad_w[i];  // Fixed: subtract gradient for descent
   }
 }
 

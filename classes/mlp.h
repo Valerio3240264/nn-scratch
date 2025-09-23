@@ -4,7 +4,43 @@
 #include "layer.h"
 #include "input.h"
 #include "activation_function.h"
-#include "loss.h"  // Add this include
+#include "loss.h" 
+#include "enums.h"
+
+/*TODO
+1: Create functions to evaluate the output and gradient of a whole batch.
+2: Optimize the batch operations using personalized cuda kernels.
+*/
+
+/*
+MLP CLASS DOCUMENTATION:
+PURPOSE:
+This class is used to store the layers, input size, output size and activation function name of a multi-layer perceptron.
+
+Architecture:
+layer_0 -> layer_1 -> ... -> layer_n-1 -> layer_n
+
+Attributes:
+- layers: pointer to the layers (Layer class)
+- num_layers: number of layers
+- input_size: size of the input
+- output_size: size of the output
+- function_name: name of the activation function
+
+Constructors:
+- mlp(int input_size, int output_size, int num_layers, int *hidden_sizes, Activation_name activation_function): creates a new mlp with the passed input size, output size, number of layers and hidden sizes.
+- ~mlp(): destructor to delete the layers.
+
+Methods:
+- operator()(input *in): evaluates the output of the mlp.
+- compute_loss(input *target): computes the loss of the mlp. 
+  It also computes the gradients of the whole neural network calling the backward pass on the loss that will be linked with the last layer and so on until the input layer.
+- update(double learning_rate): updates the weights using the computed gradients.
+- zero_grad(): sets all the gradients to 0.
+- print_weights(): prints the weights.
+- print_grad_weights(): prints the gradients of the weights.
+
+*/
 
 using namespace std;
 
@@ -14,9 +50,10 @@ class mlp{
     int num_layers;
     int input_size;
     int output_size;
+    Activation_name function_name;
 
   public:
-    mlp(int input_size, int output_size, int num_layers, int *hidden_sizes);
+    mlp(int input_size, int output_size, int num_layers, int *hidden_sizes, Activation_name activation_function);
     ~mlp();
 
     // Methods
@@ -33,18 +70,29 @@ class mlp{
 };
 
 /* CONSTRUCTOR AND DESTRUCTOR */
-mlp::mlp(int input_size, int output_size, int num_layers, int *hidden_sizes){
+mlp::mlp(int input_size, int output_size, int num_layers, int *hidden_sizes, Activation_name function_name){
   this->input_size = input_size;
   this->output_size = output_size;
   this->num_layers = num_layers;
+  this->function_name = function_name;
+  this->layers = new layer*[num_layers]; 
 
-  this->layers = new layer*[num_layers];  // Array of pointers
-
-  this->layers[0] = new layer(input_size, hidden_sizes[0]);
-  for(int i = 1; i < num_layers - 1; i++){
-    this->layers[i] = new layer(hidden_sizes[i-1], hidden_sizes[i]);
+  if(num_layers > 1){
+    this->layers[0] = new layer(input_size, hidden_sizes[0], function_name);
+    for(int i = 1; i < num_layers - 1; i++){
+      cout<<"Creating layer: "<<i<<endl;
+      this->layers[i] = new layer(hidden_sizes[i-1], hidden_sizes[i], function_name);
+      cout<<"Layer "<<i<<" created"<<endl;
+    }
+    this->layers[num_layers - 1] = new layer(hidden_sizes[num_layers - 2], output_size, function_name);
   }
-  this->layers[num_layers - 1] = new layer(hidden_sizes[num_layers - 2], output_size);
+  else if(num_layers == 1){
+    this->layers[0] = new layer(input_size, output_size, function_name);
+  }
+  else{
+    cout<<"Error: num_layers must be greater than 0"<<endl;
+    exit(1);
+  }
 }
 
 mlp::~mlp(){

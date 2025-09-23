@@ -5,6 +5,40 @@
 #include "enums.h"
 #include "virtual_classes.h"
 
+/*TODO
+1: Create a function to evaluate the output of a whole batch.
+2: Create a function to evaluate the gradient of a whole batch.
+3: Optimize the batch operations using personalized cuda kernels.
+*/
+
+/*
+ACTIVATION FUNCTION CLASS DOCUMENTATION:
+PURPOSE:
+This class is used to store the values and gradients of the activation_function performed on the weighted sum of the previous layer.
+It also stores the name of the activation function and the predecessor pointer to perform the backward pass on the whole neural network.
+This class stores the values and when it is called it will apply the activation function to the values array.
+
+Attributes:
+- size: size of the values and gradients arrays
+- value: pointer to the values array
+- grad: pointer to the gradients array
+- pred: pointer to the predecessor (this pointer can be seen as an edge in the computational graph of the neural network)
+- function_name: name of the activation function
+
+Constructors:
+- activation_function(int size, double *value, Activation_name function_name, BackwardClass *pred): creates a new array for the values and gradients arrays and sets the predecessor to the passed pointer.
+
+Methods:
+- values_pointer(): returns the pointer to the values array.
+- grad_pointer(): returns the pointer to the gradients array.
+- operator()(): applies the activation function to the values array.
+- zero_grad(): sets all the gradients to 0.
+- backward(double *derivatives): accumulates the gradients and propagates them to the predecessor.
+- print_value(): prints the values array.
+- print_grad(): prints the gradients array.
+
+*/
+
 using namespace std;
 
 class activation_function : public BackwardClass {
@@ -88,6 +122,13 @@ void activation_function::operator()(){
     if(this->function_name == TANH){
       this->value[i] = tanh(this->value[i]);
     }
+    else if(this->function_name == RELU){
+      this->value[i] = max(0.0, this->value[i]);
+    }
+    else if(this->function_name == LINEAR){
+      // LINEAR: no activation, keep value as-is
+      this->value[i] = this->value[i];
+    }
     else{
       throw invalid_argument("Invalid activation function");
     }
@@ -108,6 +149,15 @@ void activation_function::backward(double *derivatives){
   for(int i = 0; i < this->size; i++){
     if(this->function_name == TANH){
       prevGrad[i] = derivatives[i] * (1 - (this->value[i]* this->value[i]));
+      this->grad[i] += prevGrad[i];
+    }
+    else if(this->function_name == RELU){
+      prevGrad[i] = derivatives[i] * (this->value[i] > 0 ? 1 : 0);
+      this->grad[i] += prevGrad[i];
+    }
+    else if(this->function_name == LINEAR){
+      // LINEAR: derivative is 1, pass gradient through unchanged
+      prevGrad[i] = derivatives[i] * 1.0;
       this->grad[i] += prevGrad[i];
     }
     else{
