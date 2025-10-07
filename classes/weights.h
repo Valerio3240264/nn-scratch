@@ -2,6 +2,8 @@
 #define WEIGHTS_H
 #include "input.h"
 #include "virtual_classes.h"
+#include "cuda_manager.cuh"
+#include <iostream>
 
 /* TODO 
 1: Optimize the matrix multiplication using a personalized CUDA kernel.
@@ -47,6 +49,12 @@ class weights: public BackwardClass{
     int output_size;
     double *input_values;
     BackwardClass *pred;
+    
+    // CUDA-related members
+    double *d_w;         // Device weights
+    double *d_input;     // Device input vector
+    double *d_output;    // Device output vector
+    bool cuda_initialized;
 
   public:
     // Constructors
@@ -58,10 +66,15 @@ class weights: public BackwardClass{
     double *grad_pointer() override;
     // Methods
     double *operator()(BackwardClass * in);
+    double *operator_cpu(BackwardClass * in);
     // Backpropagation functions
     void zero_grad() override;
     void backward(double *derivatives) override;
     void update(double learning_rate);
+    // CUDA Methods
+    void init_cuda();
+    void cleanup_cuda();
+    double *operator_cuda(BackwardClass * in);
     // Testing functions
     void print_weights();
     void print_grad_weights();
@@ -77,6 +90,13 @@ weights::weights(int input_size, int output_size)
   this->grad_w = new double[input_size * output_size];
   this->input_values = nullptr;
   this->pred = nullptr;
+  
+  // Initialize CUDA-related members
+  this->d_w = nullptr;
+  this->d_input = nullptr;
+  this->d_output = nullptr;
+  this->cuda_initialized = false;
+  
   for (int i = 0; i < input_size * output_size; i++)
   {
     this->w[i] = (rand() % 100)/100.0;
@@ -88,6 +108,7 @@ weights::weights(int input_size, int output_size)
 weights::~weights(){
   delete[] this->w;
   delete[] this->grad_w;
+  cleanup_cuda();  // Clean up CUDA resources
 }
 
 /* GETTERS */
@@ -103,17 +124,57 @@ double *weights::grad_pointer(){
 
 /* METHODS */
 // Operator to evaluate the output
-double *weights::operator()(BackwardClass *in){
+// CPU-only implementation
+double *weights::operator_cpu(BackwardClass *in){
   this->input_values = in->values_pointer();
   this->pred = in;
   double *output = new double[output_size];
-  for (int i = 0; i < this->output_size; i++){
-    output[i] = 0;
-    for (int j = 0; j < this->input_size; j++){
-      output[i] += this->w[j * this->output_size + i] * this->input_values[j];
+  for (int row = 0; row < this->output_size; row++){
+    output[row] = 0;
+    for(int col = 0; col< this->input_size; col++){
+      output[row] += this->w[row * this->input_size + col] * this->input_values[col];
     }
   }
   return output;
+}
+
+// Smart operator - automatically chooses GPU or CPU
+double *weights::operator()(BackwardClass *in){
+  // Check if CUDA is available and beneficial
+  if (CudaManager::is_cuda_available()) {
+    // Initialize CUDA if not already done
+    if (!cuda_initialized) {
+      init_cuda();
+    }
+    
+    // If CUDA initialization succeeded, use GPU
+    if (cuda_initialized) {
+      this->input_values = in->values_pointer();
+      this->pred = in;
+      
+      try {
+        // Transfer data to GPU using CudaManager
+        CudaManager::copy_host_to_device(d_input, input_values, input_size);
+        CudaManager::copy_host_to_device(d_w, w, input_size * output_size);
+        
+        // Launch kernel using CudaManager
+        CudaManager::launch_matrix_vector_multiply(d_w, d_input, d_output, output_size, input_size);
+        CudaManager::synchronize();
+        
+        // Get results from GPU
+        double *output = new double[output_size];
+        CudaManager::copy_device_to_host(output, d_output, output_size);
+        
+        return output;
+        
+      } catch (const std::exception& e) {
+        fprintf(stderr, "CUDA operation failed: %s. Falling back to CPU.\n", e.what());
+      }
+    }
+  }
+  
+  // Fall back to CPU computation
+  return operator_cpu(in);
 }
 
 /* BACKPROPAGATION FUNCTIONS */
@@ -127,11 +188,11 @@ void weights::zero_grad(){
 // Backward pass
 void weights::backward(double *derivatives){
   double *prevGrad = new double[this->input_size];
-  for (int i = 0; i <  this->input_size; i++){
-    prevGrad[i] = 0;
-    for (int j = 0; j < this->output_size; j++){
-      prevGrad[i] += derivatives[j] * this->w[i * this->output_size + j];
-      this->grad_w[i * this->output_size + j] += this->input_values[i] * derivatives[j];
+  for(int col = 0; col < this->input_size; col++){
+    prevGrad[col] = 0;
+    for(int row = 0; row< this->output_size; row++){
+      prevGrad[col] += derivatives[col] * this->w[row * this->input_size + col];
+      this->grad_w[row * this->input_size + col] += derivatives[row] * this->input_values[col];
     }
   }
   this->pred->backward(prevGrad);
@@ -157,11 +218,88 @@ void weights::print_weights(){
 
 // Print the gradient of the weights
 void weights::print_grad_weights(){
-  for (int i = 0; i < this->input_size * this->output_size; i++)
-  {
+  for (int i = 0; i < this->input_size * this->output_size; i++){
     cout << this->grad_w[i] << " ";
   }
   cout << endl;
+}
+
+/* CUDA IMPLEMENTATION */
+
+// Initialize CUDA memory using CudaManager
+void weights::init_cuda() {
+  if (cuda_initialized) {
+    return;
+  }
+  
+  if (!CudaManager::is_cuda_available()) {
+    fprintf(stderr, "Warning: CUDA not available. Using CPU computation.\n");
+    return;
+  }
+  
+  try {
+    // Allocate GPU memory using CudaManager
+    CudaManager::allocate_device_memory(&d_w, input_size * output_size);
+    CudaManager::allocate_device_memory(&d_input, input_size);
+    CudaManager::allocate_device_memory(&d_output, output_size);
+    
+    // Copy weights to GPU
+    CudaManager::copy_host_to_device(d_w, w, input_size * output_size);
+    
+    cuda_initialized = true;
+    printf("CUDA initialized for weights layer (%dx%d)\n", input_size, output_size);
+      
+  } catch (const std::exception& e) {
+    fprintf(stderr, "CUDA initialization failed: %s\n", e.what());
+    cleanup_cuda();
+  }
+}
+
+// Cleanup CUDA memory using CudaManager
+void weights::cleanup_cuda() {
+    if (cuda_initialized) {
+        CudaManager::free_device_memory(d_w);
+        CudaManager::free_device_memory(d_input);
+        CudaManager::free_device_memory(d_output);
+        
+        d_w = d_input = d_output = nullptr;
+        cuda_initialized = false;
+    }
+}
+
+// CUDA-accelerated operator using CudaManager
+double *weights::operator_cuda(BackwardClass *in) {
+  // Initialize CUDA if not already done
+  if (!cuda_initialized) {
+    init_cuda();
+    if (!cuda_initialized) {
+      printf("Falling back to CPU implementation\n");
+      return operator()(in);  // Fallback to CPU
+    }
+  }
+  
+  this->input_values = in->values_pointer();
+  this->pred = in;
+  
+  try {
+    // Transfer data to GPU using CudaManager
+    CudaManager::copy_host_to_device(d_input, input_values, input_size);
+    CudaManager::copy_host_to_device(d_w, w, input_size * output_size);
+    
+    // Launch kernel using CudaManager
+    CudaManager::launch_matrix_vector_multiply(d_w, d_input, d_output, output_size, input_size);
+    CudaManager::synchronize();
+    
+    // Get results from GPU
+    double *output = new double[output_size];
+    CudaManager::copy_device_to_host(output, d_output, output_size);
+    
+    return output;
+    
+  } catch (const std::exception& e) {
+    fprintf(stderr, "CUDA operation failed: %s. Falling back to CPU.\n", e.what());
+    return operator()(in);  // Fallback to CPU on any error
+  }
 }
 
 #endif
