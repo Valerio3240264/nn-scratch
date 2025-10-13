@@ -47,27 +47,32 @@ This creates a computational graph where "Layer_i will call Layer_i-1 activation
 
 ## Current TODO List
 
+### CUDA KERNELS
+1. ❌ Optimize the matrix-vector multiplication.
+2. ❌ Write matmul cuda kernel.
+3. ❌ Write gradient update cuda kernel for weights.
+
 ### Activation Function (activation_function.h)
-1. Create a function to evaluate the output of a whole batch
-2. Create a function to evaluate the gradient of a whole batch  
-3. Optimize the batch operations using personalized cuda kernels
+1. ❌ Create a function to evaluate the output of a whole batch
+2. ❌ Create a function to evaluate the gradient of a whole batch  
+3. ❌ Optimize the batch operations using personalized cuda kernels
 
 ### Layer (layer.h)
-1. Create functions to evaluate the output and gradient of a whole batch
+1. ❌ Create functions to evaluate the output and gradient of a whole batch
 
 ### Loss Function (loss.h)
-1. Write a backward function that does not need to know the derivatives value since it is the first step of the backward pass and the derivatives are known
-2. Create a function to evaluate the loss of a whole batch
-3. Create a function to evaluate the gradient of a whole batch
-4. Optimize the batch operations using personalized cuda kernels
+1. ❌ Write a backward function that does not need to know the derivatives value since it is the first step of the backward pass and the derivatives are known
+2. ❌ Create a function to evaluate the loss of a whole batch
+3. ❌ Create a function to evaluate the gradient of a whole batch
+4. ❌ Optimize the batch operations using personalized cuda kernels
 
 ### Multi-Layer Perceptron (mlp.h)
-1. Create functions to evaluate the output and gradient of a whole batch
-2. Optimize the batch operations using personalized cuda kernels
+1. ❌ Create functions to evaluate the output and gradient of a whole batch
+2. ❌ Optimize the batch operations using personalized cuda kernels
 
 ### Weights (weights.h)  
-1. Optimize the matrix multiplication using a personalized CUDA kernel
-2. Optimize the gradient computation using a personalized CUDA kernel
-3. Create a function to evaluate to process a whole batch of data (not only one single data point)
-4. Create a function to evaluate the gradient of a whole batch
-5. Optimize the batch operations using personalized cuda kernels
+1. ❌ Optimize the matrix multiplication using a personalized CUDA kernel
+2. ❌ Optimize the gradient computation using a personalized CUDA kernel
+3. ❌ Create a function to evaluate to process a whole batch of data (not only one single data point)
+4. ❌ Create a function to evaluate the gradient of a whole batch
+5. ❌ Optimize the batch operations using personalized cuda kernels

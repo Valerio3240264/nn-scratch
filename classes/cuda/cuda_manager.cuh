@@ -2,8 +2,21 @@
 #define CUDA_MANAGER_H
 
 #include <cuda_runtime.h>
+#include <curand.h>
 #include <iostream>
 #include <stdexcept>
+#include <ctime>
+#include <type_traits>
+
+/*
+TODO: 
+
+Kernels:
+1: vector update.
+2: zeros matrix.
+3: GeMM.
+4: Update vector(learning rate).
+*/
 
 // Forward declaration of CUDA kernel
 __global__ void matrix_vector_multiplication(double *M, double *V, double *R, int output_size, int input_size);
@@ -29,7 +42,16 @@ public:
   // Memory Management  
   template<typename T>
   static void allocate_device_memory(T** device_ptr, size_t count);
-  
+
+  template<typename T>
+  static void allocate_device_memory_zeros(T** device_ptr, size_t count);
+
+  template<typename T>
+  static void allocate_device_memory_random(T** device_ptr, size_t count);
+
+  template<typename T>
+  static void zero_device_memory(T* device_ptr, size_t count);
+
   static void free_device_memory(void* device_ptr);
   
   // Memory Transfers
@@ -41,7 +63,10 @@ public:
   
   // Kernel Launch Utilities
   static void launch_matrix_vector_multiply(double* d_matrix, double* d_vector, double* d_result, int output_size, int input_size);
-  
+    // TODO:
+  static void launch_update(double* d_vector, double* d_update, double learning_rate, int size);
+  static void launch_activation_function(double* d_value, Activation_name function_name, int size);
+
   // Error Checking
   static void check_cuda_error(cudaError_t error, const char* file, int line);
   
@@ -53,6 +78,7 @@ public:
 bool CudaManager::cuda_available_checked = false;
 bool CudaManager::cuda_available = false;
 
+/* DEVICE MANAGEMENT */
 // Implementation of static methods
 
 bool CudaManager::is_cuda_available() {
@@ -71,9 +97,41 @@ bool CudaManager::is_cuda_available() {
   return cuda_available;
 }
 
+/* MEMORY MANAGEMENT */
 template<typename T>
 void CudaManager::allocate_device_memory(T** device_ptr, size_t count) {
   CUDA_CHECK_MANAGER(cudaMalloc(device_ptr, count * sizeof(T)));
+}
+
+template<typename T>
+void CudaManager::allocate_device_memory_zeros(T** device_ptr, size_t count) {
+  CUDA_CHECK_MANAGER(cudaMalloc(device_ptr, count * sizeof(T)));
+  CUDA_CHECK_MANAGER(cudaMemset(*device_ptr, 0, count * sizeof(T)));
+}
+
+template<typename T>
+void CudaManager::allocate_device_memory_random(T** device_ptr, size_t count) {
+  CUDA_CHECK_MANAGER(cudaMalloc(device_ptr, count * sizeof(T)));
+  
+  curandGenerator_t generator;
+  curandCreateGenerator(&generator, CURAND_RNG_PSEUDO_DEFAULT);
+  curandSetPseudoRandomGeneratorSeed(generator, time(NULL));
+  
+  if (std::is_same<T, double>::value) {
+    curandGenerateUniformDouble(generator, reinterpret_cast<double*>(*device_ptr), count);
+  } else if (std::is_same<T, float>::value) {
+    curandGenerateUniform(generator, reinterpret_cast<float*>(*device_ptr), count);
+  } else {
+    curandDestroyGenerator(generator);
+    throw std::runtime_error("Unsupported type for random number generation. Only float and double are supported.");
+  }
+  
+  curandDestroyGenerator(generator);
+}
+
+template<typename T>
+void CudaManager::zero_device_memory(T* device_ptr, size_t count) {
+  CUDA_CHECK_MANAGER(cudaMemset(device_ptr, 0, count * sizeof(T)));
 }
 
 void CudaManager::free_device_memory(void* device_ptr) {
@@ -92,6 +150,7 @@ void CudaManager::copy_device_to_host(T* host_ptr, const T* device_ptr, size_t c
   CUDA_CHECK_MANAGER(cudaMemcpy(host_ptr, device_ptr, count * sizeof(T), cudaMemcpyDeviceToHost));
 }
 
+/* KERNEL LAUNCH UTILITIES */
 void CudaManager::launch_matrix_vector_multiply(double* d_matrix, double* d_vector, double* d_result, int output_size, int input_size) {
   // Optimal threading configuration for the new kernel
   const int THREADS_PER_BLOCK = 256;  // Balanced for good occupancy
@@ -105,6 +164,15 @@ void CudaManager::launch_matrix_vector_multiply(double* d_matrix, double* d_vect
   CUDA_CHECK_MANAGER(cudaGetLastError());
 }
 
+void CudaManager::launch_update(double* d_vector, double* d_update, double learning_rate, int size) {
+  /*TODO*/
+}
+
+void CudaManager::launch_activation_function(double* d_value, Activation_name function_name, int size) {
+  /*TODO*/
+}
+
+/* ERROR CHECKING */
 void CudaManager::check_cuda_error(cudaError_t error, const char* file, int line) {
   if (error != cudaSuccess) {
     fprintf(stderr, "CUDA error at %s:%d: %s\n", file, line, cudaGetErrorString(error));

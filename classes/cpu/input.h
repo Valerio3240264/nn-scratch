@@ -107,13 +107,10 @@ input::input(int size, BackwardClass *pred) {
 
 // Destructor
 input::~input(){
-  if(this->pred != nullptr){
-    delete[] this->grad;
-  }
-  else{
+  if(this->pred == nullptr){
     delete[] this->value;
-    delete[] this->grad;
   }
+  delete[] this->grad;
 }
 
 /* GETTERS */

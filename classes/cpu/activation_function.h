@@ -8,7 +8,6 @@
 /*TODO
 1: Create a function to evaluate the output of a whole batch.
 2: Create a function to evaluate the gradient of a whole batch.
-3: Optimize the batch operations using personalized cuda kernels.
 */
 
 /*
