@@ -2,9 +2,9 @@
 #define LAYER_H
 
 #include <iostream>
-#include "weights.h"
-#include "input.h"
-#include "activation_function.h"
+#include "cpu/weights.h"
+#include "cpu/input.h"
+#include "cpu/activation_function.h"
 #include "enums.h"
 
 /*TODO
@@ -94,7 +94,8 @@ layer::~layer(){
 // Operator to evaluate the output
 void layer::operator()(input *in){
   this->in = in;
-  double *weights_output = (*this->W)(in);
+  double *weights_output = new double[this->output_size];
+  weights_output = (*this->W)(in);
   this->out = new activation_function(this->output_size, weights_output, this->function_name, this->W);
   this->out->operator()();
 }

@@ -1,13 +1,12 @@
 #ifndef WEIGHTS_H
 #define WEIGHTS_H
 #include "input.h"
-#include "virtual_classes.h"
+#include "../virtual_classes.h"
 #include <iostream>
 
 /* TODO 
-1: ADD BAYES.
-2: Create a function to evaluate to process a whole batch of data.
-3: Create a function to evaluate the gradient of a whole batch.
+1: Create a function to evaluate to process a whole batch of data.
+2: Create a function to evaluate the gradient of a whole batch.
 */
 
 /*
@@ -130,7 +129,7 @@ void weights::backward(double *derivatives){
   for(int col = 0; col < this->input_size; col++){
     prevGrad[col] = 0;
     for(int row = 0; row< this->output_size; row++){
-      prevGrad[col] += derivatives[col] * this->w[row * this->input_size + col];
+      prevGrad[col] += derivatives[row] * this->w[row * this->input_size + col];
       this->grad_w[row * this->input_size + col] += derivatives[row] * this->input_values[col];
     }
   }

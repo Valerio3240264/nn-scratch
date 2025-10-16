@@ -2,8 +2,8 @@
 #define MLP_H
 
 #include "layer.h"
-#include "input.h"
-#include "activation_function.h"
+#include "cpu/input.h"
+#include "cpu/activation_function.h"
 #include "loss.h" 
 #include "enums.h"
 

@@ -61,6 +61,9 @@ double *cuda_activation_function::grad_pointer(){
 /* METHODS */
 // Operator to apply the activation function
 void cuda_activation_function::operator()(){
+  if(this->function_name != TANH && this->function_name != RELU && this->function_name != LINEAR){
+    throw invalid_argument("Invalid activation function");
+  }
   cuda_manager::launch_activation_function(this->d_value, this->function_name, this->size);
 }
 

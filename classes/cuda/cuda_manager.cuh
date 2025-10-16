@@ -7,6 +7,7 @@
 #include <stdexcept>
 #include <ctime>
 #include <type_traits>
+#include "enums.h"
 
 /*
 TODO: 
@@ -15,11 +16,14 @@ Kernels:
 1: vector update.
 2: zeros matrix.
 3: GeMM.
-4: Update vector(learning rate).
+4: Activation function.
 */
 
-// Forward declaration of CUDA kernel
+// Forward declaration of CUDA kernels
 __global__ void matrix_vector_multiplication(double *M, double *V, double *R, int output_size, int input_size);
+__global__ void vector_update(double *V, double *U, double learning_rate, int size);
+__global__ void activation_tanh(double *V, int size);
+__global__ void activation_relu(double *V, int size);
 
 // CUDA error checking macro - centralized in CudaManager
 #define CUDA_CHECK_MANAGER(call) \
@@ -165,11 +169,42 @@ void CudaManager::launch_matrix_vector_multiply(double* d_matrix, double* d_vect
 }
 
 void CudaManager::launch_update(double* d_vector, double* d_update, double learning_rate, int size) {
-  /*TODO*/
+  const int THREADS_PER_BLOCK = 256;
+  int num_threads = (size + 1) / 2;
+  int num_blocks = (num_threads + THREADS_PER_BLOCK - 1) / THREADS_PER_BLOCK;
+  
+  dim3 grid(num_blocks);
+  dim3 block(THREADS_PER_BLOCK);
+  
+  vector_update<<<grid, block>>>(d_vector, d_update, learning_rate, size);
+  
+  CUDA_CHECK_MANAGER(cudaGetLastError());
 }
 
 void CudaManager::launch_activation_function(double* d_value, Activation_name function_name, int size) {
-  /*TODO*/
+  const int THREADS_PER_BLOCK = 256;
+  int num_blocks = (size + THREADS_PER_BLOCK - 1) / THREADS_PER_BLOCK;
+  
+  dim3 grid(num_blocks);
+  dim3 block(THREADS_PER_BLOCK);
+  
+  switch(function_name) {
+    case TANH:
+      activation_tanh<<<grid, block>>>(d_value, size);
+      CUDA_CHECK_MANAGER(cudaGetLastError());
+      break;
+      
+    case RELU:
+      activation_relu<<<grid, block>>>(d_value, size);
+      CUDA_CHECK_MANAGER(cudaGetLastError());
+      break;
+      
+    case LINEAR:
+      break;
+      
+    default:
+      throw std::runtime_error("Invalid activation function");
+  }
 }
 
 /* ERROR CHECKING */

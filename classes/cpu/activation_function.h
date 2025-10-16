@@ -2,8 +2,8 @@
 #define ACTIVATION_FUNCTION_H
 #include <iostream>
 #include <cmath>
-#include "enums.h"
-#include "virtual_classes.h"
+#include "../enums.h"
+#include "../virtual_classes.h"
 
 /*TODO
 1: Create a function to evaluate the output of a whole batch.
@@ -125,8 +125,7 @@ void activation_function::operator()(){
       this->value[i] = max(0.0, this->value[i]);
     }
     else if(this->function_name == LINEAR){
-      // LINEAR: no activation, keep value as-is
-      this->value[i] = this->value[i];
+      break;
     }
     else{
       throw invalid_argument("Invalid activation function");

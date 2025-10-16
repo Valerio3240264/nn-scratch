@@ -65,6 +65,7 @@ class loss: public BackwardClass{
     // Getters
     double *values_pointer() override;
     double *grad_pointer() override;
+    double *get_total_loss();
     // Testing functions
     void print_loss();
     void print_grad();
@@ -112,6 +113,15 @@ double *loss::grad_pointer(){
   return this->grad;
 }
 
+// Get the total loss
+double *loss::get_total_loss(){
+  double total_loss = 0;
+  for(int i = 0; i < this->size; i++){
+    total_loss += this->loss_value[i];
+  }
+  return total_loss;
+}
+
 /* METHODS */
 // Operator to set the target
 void loss::operator()(double *target){
@@ -130,6 +140,30 @@ void loss::operator()(){
     double *predictions = this->pred->values_pointer();
     for(int i = 0; i < this->size; i++){
       this->loss_value[i] = (predictions[i] - this->target[i]) * (predictions[i] - this->target[i]);
+    }
+  }
+}
+
+// Operator to calculate the loss for a classification task
+void loss::operator()(int target_index){
+  if(target_index < 0 || target_index >= this->size){
+    throw std::invalid_argument("Target index is out of bounds");
+  }
+  double *predictions = this->pred->values_pointer();
+  int prediction_index = 0;
+  for(int i = 1; i < this->size; i++){
+    if(predictions[i] > predictions[prediction_index]){
+      prediction_index = i;
+    }
+  }
+  if(prediction_index == target_index){
+    for(int i = 0; i < this->size; i++){
+      this->loss_value[i] = 0;
+    }
+  }
+  else{
+    for(int i = 0; i < this->size; i++){
+      this->loss_value[i] = 1;
     }
   }
 }

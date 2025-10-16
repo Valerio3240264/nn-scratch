@@ -2,7 +2,11 @@
 #define INPUT_H
 
 #include <iostream>
-#include "virtual_classes.h"
+#include "../virtual_classes.h"
+
+/*TODO
+1: Add batch representation.
+*/
 
 /*
 INPUT CLASS DOCUMENTATION:
