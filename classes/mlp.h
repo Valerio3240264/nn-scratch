@@ -64,7 +64,6 @@ class mlp{
     Loss_name loss_function;
     bool has_softmax;
     softmax *softmax_layer;
-    float *softmax_values;
     mse_loss *mse_loss_layer;
     cross_entropy_loss *ce_loss_layer;
     float current_loss;
@@ -132,11 +131,9 @@ mlp::mlp(int input_size, int output_size, int num_layers, int *hidden_sizes,
   }
   
   if(use_softmax){
-    this->softmax_values = new float[output_size];
     BackwardClass *last_layer_act = layers[num_layers - 1]->get_output();
-    this->softmax_layer = new softmax(output_size, softmax_values, last_layer_act);
+    this->softmax_layer = new softmax(output_size, last_layer_act);
   } else {
-    this->softmax_values = nullptr;
     this->softmax_layer = nullptr;
   }
   
@@ -182,7 +179,6 @@ mlp::mlp(int input_size, int output_size, int num_layers, int *hidden_sizes, Act
     exit(1);
   }
   
-  this->softmax_values = nullptr;
   this->softmax_layer = nullptr;
   
   BackwardClass *loss_predecessor = layers[num_layers - 1]->get_output();
@@ -198,7 +194,6 @@ mlp::~mlp(){
   delete[] activation_functions;
   
   delete softmax_layer;
-  delete[] softmax_values;
   
   delete mse_loss_layer;
   delete ce_loss_layer;
@@ -226,9 +221,7 @@ BackwardClass* mlp::operator()(BackwardClass *in){
   // Use softmax if needed
   if(this->has_softmax){
     float *last_values = out->values_pointer();
-    for(int i = 0; i < this->output_size; i++){
-      this->softmax_values[i] = last_values[i];
-    }
+    this->softmax_layer->copy_values(last_values);
     this->softmax_layer->operator()();
     
     return this->softmax_layer;

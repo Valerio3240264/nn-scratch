@@ -16,6 +16,8 @@ class softmax : public BackwardClass {
 
   public:
     // Constructors
+    softmax(int size, BackwardClass *pred);
+    softmax(int size, float temperature, BackwardClass *pred);
     softmax(int size, float *value, BackwardClass *pred);
     softmax(int size, float *value, float temperature, BackwardClass *pred);
     // Destructor
@@ -25,6 +27,9 @@ class softmax : public BackwardClass {
     float *grad_pointer() override;
     int get_prediction();
     float get_prediction_probability(int index);
+    // Setters
+    void set_value(float *value);
+    void copy_values(float *value);
     // Methods
     void backward(float *derivatives) override;
     void zero_grad() override;
@@ -35,7 +40,31 @@ class softmax : public BackwardClass {
 };
 
 /* CONSTRUCTORS AND DESTRUCTOR */
-// Constructor
+// Constructor - allocates its own memory
+softmax::softmax(int size, BackwardClass *pred){
+  this->size = size;
+  this->value = new float[size];
+  this->pred = pred;
+  this->temperature = 1.0f;
+  this->grad = new float[size];
+  for(int i = 0; i < size; i++){
+    this->value[i] = 0.0f;
+    this->grad[i] = 0.0f;
+  }
+}
+
+// Constructor with temperature - allocates its own memory
+softmax::softmax(int size, float temperature, BackwardClass *pred){
+  this->size = size;
+  this->value = new float[size];
+  this->pred = pred;
+  this->temperature = temperature;
+  this->grad = new float[size];
+  for(int i = 0; i < size; i++){
+    this->value[i] = 0.0f;
+    this->grad[i] = 0.0f;
+  }
+}
 softmax::softmax(int size, float *value, BackwardClass *pred){
   this->size = size;
   this->value = value;
@@ -77,6 +106,10 @@ float *softmax::grad_pointer(){
 }
 
 int softmax::get_prediction(){
+  if(this->value == nullptr){
+    return -1;
+  }
+
   int max_val_indx = 0;
   for(int i = 1; i < this->size; i++){
     if(this->value[i] > this->value[max_val_indx]){
@@ -87,12 +120,34 @@ int softmax::get_prediction(){
 }
 
 float softmax::get_prediction_probability(int index){
+  if(this->value == nullptr){
+    return 0.0f;
+  }
   return this->value[index];
 }
 
+/* SETTERS */
+// Set the value
+void softmax::set_value(float *value){
+  this->value = value ? value : nullptr;
+}
+
+// Copy values
+void softmax::copy_values(float *value){
+  for(int i = 0; i < this->size; i++){
+    this->value[i] = value[i];
+  }
+}
 /* METHODS */
 // Operator to apply the softmax function
 void softmax::operator()(){
+
+  if(this->value == nullptr){
+    cout<<"Error: value is not set"<<endl;
+    exit(1);
+    return;
+  }
+
   // Find max value for numerical stability
   float max_val = this->value[0];
   for(int i = 1; i < this->size; i++){
@@ -122,6 +177,11 @@ void softmax::zero_grad(){
 
 // Backward pass
 void softmax::backward(float *derivatives){
+  if(this->value == nullptr){
+    cout<<"Error: value is not set"<<endl;
+    exit(1);
+    return;
+  }
   float dot = 0.0f;
   for (int k = 0; k < this->size; ++k) {
     dot += this->value[k] * derivatives[k];
@@ -142,6 +202,11 @@ void softmax::backward(float *derivatives){
 /* TESTING FUNCTIONS */
 // Print the values
 void softmax::print_value(){
+  if(this->value == nullptr){
+    cout<<"Error: value is not set"<<endl;
+    exit(1);
+    return;
+  }
   for(int i = 0; i < this->size; i++){
     std::cout << this->value[i] << " ";
   }
@@ -150,6 +215,11 @@ void softmax::print_value(){
 
 // Print the gradient
 void softmax::print_grad(){
+  if(this->value == nullptr){
+    cout<<"Error: value is not set"<<endl;
+    exit(1);
+    return;
+  }
   for(int i = 0; i < this->size; i++){
     std::cout << this->grad[i] << " ";
   }

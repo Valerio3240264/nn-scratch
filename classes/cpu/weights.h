@@ -6,6 +6,7 @@
 #include <cstdlib>
 #include <ctime>
 #include <cmath>
+#include <random>
 
 /* TODO 
 1: Create a function to evaluate to process a whole batch of data.
@@ -90,14 +91,7 @@ weights::weights(int input_size, int output_size){
   this->grad_b = new float[output_size];
   this->input_values = nullptr;
   this->pred = nullptr;
-  
-  // Seed random number generator once (static ensures it's only done once)
-  static bool seeded = false;
-  if(!seeded){
-    srand(time(NULL));
-    seeded = true;
-  }
-  
+
   // Xavier/Glorot initialization: scale by sqrt(1/input_size) for better convergence
   /*
     Layer saturation occurs when the latest layer of a neural network doesnt change its output much as the network trains. 
@@ -114,11 +108,15 @@ weights::weights(int input_size, int output_size){
   */
   float scale = sqrtf(1.0f / input_size);
   
+  // Random number generator
+  default_random_engine generator;
+  uniform_real_distribution<float> distribution(-scale, scale);
+
   for (int i = 0; i < input_size * output_size; i++)
   {
-    // Random value between -1 and 1, then scale
-    this->w[i] = ((rand() / (float)RAND_MAX) * 2.0f - 1.0f) * scale;
-    this->grad_w[i] = 0;
+    // Random value between -scale and scale
+    this->w[i] = distribution(generator);
+    this->grad_w[i] = 0.0f;
   }
   
   // Initialize biases to zero (common practice)
