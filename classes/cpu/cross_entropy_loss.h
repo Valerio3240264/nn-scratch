@@ -38,33 +38,33 @@ using namespace std;
 class cross_entropy_loss : public BackwardClass {
   private:
     BackwardClass *pred;
-    double *target;
-    double *grad;
-    double loss_value;
+    float *target;
+    float *grad;
+    float loss_value;
     int size;
 
   public:
     // Constructors
     cross_entropy_loss(BackwardClass *pred, int size);
-    cross_entropy_loss(BackwardClass *pred, int size, double *target);
+    cross_entropy_loss(BackwardClass *pred, int size, float *target);
     
     // Destructor
     ~cross_entropy_loss();
     
     // Forward pass methods
-    void operator()(double *target);
+    void operator()(float *target);
     void operator()(int target_index);
     void operator()();
     
     // Backpropagation functions
     void zero_grad() override;
-    void backward(double *derivatives) override;
+    void backward(float *derivatives) override;
     void backward();
     
     // Getters
-    double *values_pointer() override;
-    double *grad_pointer() override;
-    double get_loss();
+    float *values_pointer() override;
+    float *grad_pointer() override;
+    float get_loss();
     
     // Testing functions
     void print_loss();
@@ -75,24 +75,24 @@ class cross_entropy_loss : public BackwardClass {
 cross_entropy_loss::cross_entropy_loss(BackwardClass *pred, int size) {
   this->pred = pred;
   this->size = size;
-  this->grad = new double[size];
+  this->grad = new float[size];
   this->target = nullptr;
-  this->loss_value = 0.0;
+  this->loss_value = 0.0f;
   
   for(int i = 0; i < size; i++) {
-    this->grad[i] = 0.0;
+    this->grad[i] = 0.0f;
   }
 }
 
-cross_entropy_loss::cross_entropy_loss(BackwardClass *pred, int size, double *target) {
+cross_entropy_loss::cross_entropy_loss(BackwardClass *pred, int size, float *target) {
   this->pred = pred;
   this->size = size;
-  this->grad = new double[size];
+  this->grad = new float[size];
   this->target = target;
-  this->loss_value = 0.0;
+  this->loss_value = 0.0f;
   
   for(int i = 0; i < size; i++) {
-    this->grad[i] = 0.0;
+    this->grad[i] = 0.0f;
   }
 }
 
@@ -106,7 +106,7 @@ cross_entropy_loss::~cross_entropy_loss() {
 
 /* FORWARD PASS METHODS */
 // Forward with one-hot encoded target
-void cross_entropy_loss::operator()(double *target) {
+void cross_entropy_loss::operator()(float *target) {
   if(this->target != nullptr) {
     delete[] this->target;
     this->target = nullptr;
@@ -125,9 +125,9 @@ void cross_entropy_loss::operator()(int target_index) {
   if(this->target != nullptr) {
     delete[] this->target;
   }
-  this->target = new double[this->size];
+  this->target = new float[this->size];
   for(int i = 0; i < this->size; i++) {
-    this->target[i] = (i == target_index) ? 1.0 : 0.0;
+    this->target[i] = (i == target_index) ? 1.0f : 0.0f;
   }
   
   this->operator()();
@@ -139,14 +139,14 @@ void cross_entropy_loss::operator()() {
     throw std::invalid_argument("No target set");
   }
   
-  double *predictions = this->pred->values_pointer();
-  this->loss_value = 0.0;
+  float *predictions = this->pred->values_pointer();
+  this->loss_value = 0.0f;
   
   // Cross-entropy: -sum(target * log(prediction))
   for(int i = 0; i < this->size; i++) {
     if(this->target[i] > 0) {
       // Add small epsilon to avoid log(0)
-      this->loss_value -= this->target[i] * log(predictions[i] + 1e-15);
+      this->loss_value -= this->target[i] * logf(predictions[i] + 1e-15f);
     }
   }
 }
@@ -154,18 +154,18 @@ void cross_entropy_loss::operator()() {
 /* BACKPROPAGATION */
 void cross_entropy_loss::zero_grad() {
   for(int i = 0; i < this->size; i++) {
-    this->grad[i] = 0.0;
+    this->grad[i] = 0.0f;
   }
 }
 
 // Standard backward with incoming derivatives
-void cross_entropy_loss::backward(double *derivatives) {
+void cross_entropy_loss::backward(float *derivatives) {
   if(this->target == nullptr) {
       throw std::invalid_argument("No target set for backward pass");
   }
   
-  double *predictions = this->pred->values_pointer();
-  double *prevGrad = new double[this->size];
+  float *predictions = this->pred->values_pointer();
+  float *prevGrad = new float[this->size];
   
   // Gradient: (predictions - targets) * derivatives
   for(int i = 0; i < this->size; i++) {
@@ -183,8 +183,8 @@ void cross_entropy_loss::backward() {
     throw std::invalid_argument("No target set for backward pass");
   }
   
-  double *predictions = this->pred->values_pointer();
-  double *prevGrad = new double[this->size];
+  float *predictions = this->pred->values_pointer();
+  float *prevGrad = new float[this->size];
   
   // Beautiful simplification: gradient = predictions - one_hot_target
   for(int i = 0; i < this->size; i++) {
@@ -197,15 +197,15 @@ void cross_entropy_loss::backward() {
 }
 
 /* GETTERS */
-double *cross_entropy_loss::values_pointer() {
+float *cross_entropy_loss::values_pointer() {
     return &this->loss_value;
 }
 
-double *cross_entropy_loss::grad_pointer() {
+float *cross_entropy_loss::grad_pointer() {
     return this->grad;
 }
 
-double cross_entropy_loss::get_loss() {
+float cross_entropy_loss::get_loss() {
     return this->loss_value;
 }
 

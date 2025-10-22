@@ -24,12 +24,12 @@ Excecution time is very slow, because the network trains entirely on the CPU.
 void plot_sample(input *data, int label, int sample_index) {
   std::cout << "\n=== Sample " << sample_index << " (Label: " << label << ") ===" << std::endl;
   
-  double *values = data->values_pointer();
+  float *values = data->values_pointer();
   
   // Each MNIST image is 28x28 pixels
   for (int row = 0; row < 28; row++) {
     for (int col = 0; col < 28; col++) {
-      double pixel_value = values[row * 28 + col];
+      float pixel_value = values[row * 28 + col];
       
       // Convert normalized pixel value (0.0-1.0) to ASCII characters
       if (pixel_value < 0.1) {
@@ -68,7 +68,7 @@ void read_dataset(input **data, int *labels, std::string filename, int max_sampl
     std::stringstream ss(line);
     std::string value;
     
-    double *values_ptr = data[sample_index]->values_pointer();
+    float *values_ptr = data[sample_index]->values_pointer();
 
     // Read the label (first value)
     if (std::getline(ss, value, ',')) {
@@ -79,7 +79,7 @@ void read_dataset(input **data, int *labels, std::string filename, int max_sampl
     for (int pixel = 0; pixel < 784; pixel++) {
       if (std::getline(ss, value, ',')) {
         // Normalize pixel values from 0-255 to 0.0-1.0
-        values_ptr[pixel] = std::stod(value);
+        values_ptr[pixel] = std::stof(value);
       }
     }
     values_ptr[784] = 1.0; // Add bias term
@@ -98,7 +98,7 @@ void shuffle_training_data(std::vector<int>& train_indices) {
 }
 
 // Function to calculate accuracy on a dataset
-double calculate_accuracy(mlp& network, input** dataset, int* labels, const std::vector<int>& indices) {
+float calculate_accuracy(mlp& network, input** dataset, int* labels, const std::vector<int>& indices) {
   int correct_predictions = 0;
   network.zero_loss();
   
@@ -109,26 +109,26 @@ double calculate_accuracy(mlp& network, input** dataset, int* labels, const std:
     }
   }
   
-  return (double)correct_predictions / indices.size() * 100.0;
+  return (float)correct_predictions / indices.size() * 100.0f;
 }
 
 /* DATASET INFORMATION */
 const int total_samples = 42000;  // Total samples in train.csv (excluding header)
 const int training_samples = 32000;  // Total samples to use for training
 const int test_samples = 10000;  // Total samples to use for validation
-const int num_features = 785;   // 28x28 pixels + 1 bias term
+const int num_features = 784;   // 28x28 pixels
 
 /* HYPERPARAMETERS */
-int input_size = 785;
+int input_size = 784;
 int output_size = 10;
 int num_layers = 3;
-int hidden_sizes[3] = {257, 129, 10};
+int hidden_sizes[3] = {256, 128, 10};
 Activation_name activation_functions[3] = {RELU, RELU, LINEAR};
 Loss_name loss_function = CROSS_ENTROPY;
 bool use_softmax = true;
 int num_epochs = 5;
 int batch_size = 100;
-double learning_rate = 0.0001;
+float learning_rate = 0.0001;
 
 int main(){
   std::cout << "Starting MNIST training..." << std::endl;
@@ -168,7 +168,7 @@ int main(){
 
   // TESTING PHASE (BEFORE TRAINING)
   std::cout << "\n=== TESTING BEFORE TRAINING ===" << std::endl;
-  double accuracy_before = calculate_accuracy(network, dataset, labels, validation_indices);
+  float accuracy_before = calculate_accuracy(network, dataset, labels, validation_indices);
   std::cout << "Accuracy before training: " << accuracy_before << "%" << std::endl;
 
   // TRAINING PHASE
@@ -207,14 +207,14 @@ int main(){
     network.print_loss();
     
     // Evaluate on validation set
-    /*double validation_accuracy = calculate_accuracy(network, dataset, labels, validation_indices);
+    /*float validation_accuracy = calculate_accuracy(network, dataset, labels, validation_indices);
     std::cout << "Validation accuracy: " << validation_accuracy << "%" << std::endl;
     std::cout << "Epoch " << (epoch + 1) << " completed" << std::endl;
   */}
 
   // FINAL TESTING PHASE
   std::cout << "\n=== FINAL TESTING ===" << std::endl;
-  double accuracy_after = calculate_accuracy(network, dataset, labels, validation_indices);
+  float accuracy_after = calculate_accuracy(network, dataset, labels, validation_indices);
   std::cout << "Final accuracy: " << accuracy_after << "%" << std::endl;
   std::cout << "Improvement: " << (accuracy_after - accuracy_before) << "%" << std::endl;
 

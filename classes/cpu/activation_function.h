@@ -43,30 +43,30 @@ using namespace std;
 class activation_function : public BackwardClass {
   private:
     int size;
-    double *value;
-    double *grad;
+    float *value;
+    float *grad;
     BackwardClass *pred;
     Activation_name function_name;
 
   public:
     // Constructors
-    activation_function(int size, double *value, Activation_name function_name, BackwardClass *pred);
+    activation_function(int size, float *value, Activation_name function_name, BackwardClass *pred);
     
     // Destructor
     ~activation_function();
     
     // Getters
-    double *values_pointer() override;
-    double *grad_pointer() override;
-    double get_value(int index);
-    double get_grad(int index);
+    float *values_pointer() override;
+    float *grad_pointer() override;
+    float get_value(int index);
+    float get_grad(int index);
 
     // Methods
     void operator()();
     
     // Backpropagation functions
     void zero_grad() override;
-    void backward(double * derivatives) override;
+    void backward(float * derivatives) override;
     
     // Testing functions
     void print_value();
@@ -76,10 +76,10 @@ class activation_function : public BackwardClass {
 /* CONSTRUCTORS AND DESTRUCTOR */
 // Constructor
 activation_function::activation_function(
-  int size, double *value, Activation_name function_name, BackwardClass *pred){
+  int size, float *value, Activation_name function_name, BackwardClass *pred){
   this->size = size;
   this->value = value;
-  this->grad = new double[size];
+  this->grad = new float[size];
   for(int i = 0; i < size; i++){
     this->grad[i] = 0;
   }
@@ -95,22 +95,22 @@ activation_function::~activation_function(){
 /* GETTERS */
 
 // Get the values pointer
-double *activation_function::values_pointer(){
+float *activation_function::values_pointer(){
   return this->value;
 }
 
 // Get the gradient pointer
-double *activation_function::grad_pointer(){
+float *activation_function::grad_pointer(){
   return this->grad;
 }
 
 // Get the value at a specific index
-double activation_function::get_value(int index){
+float activation_function::get_value(int index){
   return this->value[index];
 }
 
 // Get the gradient at a specific index
-double activation_function::get_grad(int index){
+float activation_function::get_grad(int index){
   return this->grad[index];
 }
 
@@ -119,10 +119,10 @@ double activation_function::get_grad(int index){
 void activation_function::operator()(){
   for(int i = 0; i < this->size; i++){
     if(this->function_name == TANH){
-      this->value[i] = tanh(this->value[i]);
+      this->value[i] = tanhf(this->value[i]);
     }
     else if(this->function_name == RELU){
-      this->value[i] = max(0.0, this->value[i]);
+      this->value[i] = max(0.0f, this->value[i]);
     }
     else if(this->function_name == LINEAR){
       break;
@@ -137,13 +137,13 @@ void activation_function::operator()(){
 // Zero the gradient
 void activation_function::zero_grad(){
   for(int i = 0; i < this->size; i++){
-    this->grad[i] = 0.0;
+    this->grad[i] = 0.0f;
   }
 }
 
 // Backward pass
-void activation_function::backward(double *derivatives){
-  double *prevGrad = new double[this->size];
+void activation_function::backward(float *derivatives){
+  float *prevGrad = new float[this->size];
   for(int i = 0; i < this->size; i++){
     if(this->function_name == TANH){
       prevGrad[i] = derivatives[i] * (1 - (this->value[i]* this->value[i]));
@@ -155,7 +155,7 @@ void activation_function::backward(double *derivatives){
     }
     else if(this->function_name == LINEAR){
       // LINEAR: derivative is 1, pass gradient through unchanged
-      prevGrad[i] = derivatives[i] * 1.0;
+      prevGrad[i] = derivatives[i] * 1.0f;
       this->grad[i] += prevGrad[i];
     }
     else{

@@ -32,32 +32,32 @@ using namespace std;
 class mse_loss : public BackwardClass {
   private:
     BackwardClass *pred;
-    double *target;
-    double *grad;
-    double loss_value;
+    float *target;
+    float *grad;
+    float loss_value;
     int size;
 
   public:
     // Constructors
     mse_loss(BackwardClass *pred, int size);
-    mse_loss(BackwardClass *pred, int size, double *target);
+    mse_loss(BackwardClass *pred, int size, float *target);
     
     // Destructor
     ~mse_loss();
     
     // Forward pass methods
-    void operator()(double *target);
+    void operator()(float *target);
     void operator()();
     
     // Backpropagation functions
     void zero_grad() override;
-    void backward(double *derivatives) override;
+    void backward(float *derivatives) override;
     void backward();
     
     // Getters
-    double *values_pointer() override;
-    double *grad_pointer() override;
-    double get_loss();
+    float *values_pointer() override;
+    float *grad_pointer() override;
+    float get_loss();
     
     // Testing functions
     void print_loss();
@@ -68,24 +68,24 @@ class mse_loss : public BackwardClass {
 mse_loss::mse_loss(BackwardClass *pred, int size) {
   this->pred = pred;
   this->size = size;
-  this->grad = new double[size];
+  this->grad = new float[size];
   this->target = nullptr;
-  this->loss_value = 0.0;
+  this->loss_value = 0.0f;
   
   for(int i = 0; i < size; i++) {
-    this->grad[i] = 0.0;
+    this->grad[i] = 0.0f;
   }
 }
 
-mse_loss::mse_loss(BackwardClass *pred, int size, double *target) {
+mse_loss::mse_loss(BackwardClass *pred, int size, float *target) {
   this->pred = pred;
   this->size = size;
-  this->grad = new double[size];
+  this->grad = new float[size];
   this->target = target;
-  this->loss_value = 0.0;
+  this->loss_value = 0.0f;
   
   for(int i = 0; i < size; i++) {
-    this->grad[i] = 0.0;
+    this->grad[i] = 0.0f;
   }
 }
 
@@ -95,7 +95,7 @@ mse_loss::~mse_loss() {
 }
 
 /* METHODS */
-void mse_loss::operator()(double *target) {
+void mse_loss::operator()(float *target) {
   if(this->target != nullptr){
     delete[] this->target;
     this->target = nullptr;
@@ -106,11 +106,11 @@ void mse_loss::operator()(double *target) {
 
 // Forward with stored target
 void mse_loss::operator()() {
-  double *predictions = this->pred->values_pointer();
-  this->loss_value = 0.0;
+  float *predictions = this->pred->values_pointer();
+  this->loss_value = 0.0f;
 
   for(int i = 0; i < this->size; i++) {
-    double diff = predictions[i] - this->target[i];
+    float diff = predictions[i] - this->target[i];
     this->loss_value += diff * diff;
   }
   this->loss_value /= this->size;
@@ -119,20 +119,20 @@ void mse_loss::operator()() {
 /* BACKPROPAGATION */
 void mse_loss::zero_grad() {
   for(int i = 0; i < this->size; i++) {
-    this->grad[i] = 0.0;
+    this->grad[i] = 0.0f;
   }
 }
 
-void mse_loss::backward(double *derivatives) {
+void mse_loss::backward(float *derivatives) {
   if(this->target == nullptr) {
     throw std::invalid_argument("No target set for backward pass");
   }
   
-  double *predictions = this->pred->values_pointer();
-  double *prevGrad = new double[this->size];
+  float *predictions = this->pred->values_pointer();
+  float *prevGrad = new float[this->size];
   
   for(int i = 0; i < this->size; i++) {
-    prevGrad[i] = (2.0 / this->size) * (predictions[i] - this->target[i]) * derivatives[i];
+    prevGrad[i] = (2.0f / this->size) * (predictions[i] - this->target[i]) * derivatives[i];
     this->grad[i] += prevGrad[i];
   }
   
@@ -145,11 +145,11 @@ void mse_loss::backward() {
     throw std::invalid_argument("No target set for backward pass");
   }
   
-  double *predictions = this->pred->values_pointer();
-  double *prevGrad = new double[this->size];
+  float *predictions = this->pred->values_pointer();
+  float *prevGrad = new float[this->size];
   
   for(int i = 0; i < this->size; i++) {
-    prevGrad[i] = (2.0 / this->size) * (predictions[i] - this->target[i]);
+    prevGrad[i] = (2.0f / this->size) * (predictions[i] - this->target[i]);
     this->grad[i] += prevGrad[i];
   }
   
@@ -158,15 +158,15 @@ void mse_loss::backward() {
 }
 
 /* GETTERS */
-double *mse_loss::values_pointer() {
+float *mse_loss::values_pointer() {
   return &this->loss_value;
 }
 
-double *mse_loss::grad_pointer() {
+float *mse_loss::grad_pointer() {
   return this->grad;
 }
 
-double mse_loss::get_loss() {
+float mse_loss::get_loss() {
   return this->loss_value;
 }
 

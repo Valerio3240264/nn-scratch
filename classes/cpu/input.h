@@ -41,8 +41,8 @@ using namespace std;
 
 class input : public BackwardClass {
   private:
-    double *value;
-    double *grad;
+    float *value;
+    float *grad;
     int size;
     BackwardClass *pred;
 
@@ -50,21 +50,21 @@ class input : public BackwardClass {
     
     // Constructors
     input(int size);
-    input(int size, double *value);
+    input(int size, float *value);
     input(int size, BackwardClass *pred);
 
     // Destructor
     ~input();
 
     // Getters
-    double *values_pointer() override;
-    double *grad_pointer() override;
-    double get_value(int index);
-    double get_grad(int index);
+    float *values_pointer() override;
+    float *grad_pointer() override;
+    float get_value(int index);
+    float get_grad(int index);
     
     // Backpropagation functions
     void zero_grad() override;
-    void backward(double *derivatives) override;
+    void backward(float *derivatives) override;
 
     // Testing functions
     void print_value();
@@ -75,25 +75,25 @@ class input : public BackwardClass {
 // Constructor for base input
 input::input(int size){
   this->size = size;
-  this->value = new double[size];
-  this->grad = new double[size];
+  this->value = new float[size];
+  this->grad = new float[size];
   this->pred = nullptr;
   
   for (int i = 0; i < size; i++) {
-    this->value[i] = 0.0;
-    this->grad[i] = 0.0;
+    this->value[i] = 0.0f;
+    this->grad[i] = 0.0f;
   }
 }
 
 // Constructor for input with value
-input::input(int size, double *value) {
+input::input(int size, float *value) {
   this->size = size;
   this->value = value;
-  this->grad = new double[size];
+  this->grad = new float[size];
   this->pred = nullptr;
 
   for (int i = 0; i < size; i++) {
-    this->grad[i] = 0.0;
+    this->grad[i] = 0.0f;
   }
 }
 
@@ -101,11 +101,11 @@ input::input(int size, double *value) {
 input::input(int size, BackwardClass *pred) {
   this->size = size;
   this->value = pred->values_pointer();
-  this->grad = new double[size];
+  this->grad = new float[size];
   this->pred = pred;
   
   for (int i = 0; i < size; i++) {
-    this->grad[i] = 0.0;
+    this->grad[i] = 0.0f;
   }
 }
 
@@ -119,22 +119,22 @@ input::~input(){
 
 /* GETTERS */
 // Get the value pointer
-double *input::values_pointer(){
+float *input::values_pointer(){
   return this->value;
 }
 
 // Get the gradient pointer
-double *input::grad_pointer(){
+float *input::grad_pointer(){
   return this->grad;
 }
 
 // Get the value at a specific index
-double input::get_value(int index){
+float input::get_value(int index){
   return this->value[index];
 }
 
 // Get the gradient at a specific index
-double input::get_grad(int index){
+float input::get_grad(int index){
   return this->grad[index];
 }
 
@@ -142,12 +142,12 @@ double input::get_grad(int index){
 // Zero the gradient
 void input::zero_grad(){
   for (int i = 0; i < size; i++){
-    this->grad[i] = 0.0;
+    this->grad[i] = 0.0f;
   }
 }
 
 // Backward pass
-void input::backward(double *derivatives){
+void input::backward(float *derivatives){
   for (int i = 0; i < size; i++){
     this->grad[i] += derivatives[i];
   }

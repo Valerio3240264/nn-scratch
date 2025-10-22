@@ -64,10 +64,10 @@ class mlp{
     Loss_name loss_function;
     bool has_softmax;
     softmax *softmax_layer;
-    double *softmax_values;
+    float *softmax_values;
     mse_loss *mse_loss_layer;
     cross_entropy_loss *ce_loss_layer;
-    double current_loss;
+    float current_loss;
 
   public:
     // Constructor with activation functions per layer and loss function
@@ -81,17 +81,17 @@ class mlp{
 
     // Getters
     int get_prediction();
-    double get_prediction_probability(int index);
+    float get_prediction_probability(int index);
 
     // Methods
     BackwardClass* operator()(BackwardClass *in);
-    void compute_loss(double *target);
+    void compute_loss(float *target);
     void compute_loss(int target_index);
-    double get_loss();
+    float get_loss();
     void zero_loss();
     
     // Backpropagation functions
-    void update(double learning_rate);
+    void update(float learning_rate);
     void zero_grad();
 
     // Print functions
@@ -112,7 +112,7 @@ mlp::mlp(int input_size, int output_size, int num_layers, int *hidden_sizes,
   }
   this->loss_function = loss_function;
   this->has_softmax = use_softmax;
-  this->current_loss = 0.0;
+  this->current_loss = 0.0f;
   this->layers = new layer*[num_layers]; 
 
   // Create layers
@@ -132,7 +132,7 @@ mlp::mlp(int input_size, int output_size, int num_layers, int *hidden_sizes,
   }
   
   if(use_softmax){
-    this->softmax_values = new double[output_size];
+    this->softmax_values = new float[output_size];
     BackwardClass *last_layer_act = layers[num_layers - 1]->get_output();
     this->softmax_layer = new softmax(output_size, softmax_values, last_layer_act);
   } else {
@@ -164,7 +164,7 @@ mlp::mlp(int input_size, int output_size, int num_layers, int *hidden_sizes, Act
   }
   this->loss_function = MSE;
   this->has_softmax = false;
-  this->current_loss = 0.0;
+  this->current_loss = 0.0f;
   this->layers = new layer*[num_layers]; 
 
   if(num_layers > 1){
@@ -209,7 +209,7 @@ int mlp::get_prediction(){
   return this->softmax_layer->get_prediction();
 }
 
-double mlp::get_prediction_probability(int index){
+float mlp::get_prediction_probability(int index){
   return this->softmax_layer->get_prediction_probability(index);
 }
 
@@ -225,7 +225,7 @@ BackwardClass* mlp::operator()(BackwardClass *in){
   
   // Use softmax if needed
   if(this->has_softmax){
-    double *last_values = out->values_pointer();
+    float *last_values = out->values_pointer();
     for(int i = 0; i < this->output_size; i++){
       this->softmax_values[i] = last_values[i];
     }
@@ -238,7 +238,7 @@ BackwardClass* mlp::operator()(BackwardClass *in){
 }
 
 // Compute loss with target array
-void mlp::compute_loss(double *target){
+void mlp::compute_loss(float *target){
   if(this->loss_function == MSE){
     this->mse_loss_layer->operator()(target);
     this->current_loss += this->mse_loss_layer->get_loss();
@@ -254,9 +254,9 @@ void mlp::compute_loss(double *target){
 void mlp::compute_loss(int target_index){
   if(this->loss_function == MSE){
     // Convert target index to one-hot for MSE
-    double *target = new double[this->output_size];
+    float *target = new float[this->output_size];
     for(int i = 0; i < this->output_size; i++){
-      target[i] = (i == target_index) ? 1.0 : 0.0;
+      target[i] = (i == target_index) ? 1.0f : 0.0f;
     }
     this->mse_loss_layer->operator()(target);
     this->current_loss += this->mse_loss_layer->get_loss();
@@ -270,17 +270,17 @@ void mlp::compute_loss(int target_index){
 }
 
 // Get the loss value
-double mlp::get_loss(){
+float mlp::get_loss(){
   return this->current_loss;
 }
 
 // Zero the loss value
 void mlp::zero_loss(){
-  this->current_loss = 0.0;
+  this->current_loss = 0.0f;
 }
 
 /* BACKPROPAGATION FUNCTIONS */
-void mlp::update(double learning_rate){
+void mlp::update(float learning_rate){
   for(int i = 0; i < this->num_layers; i++){
     layers[i]->update(learning_rate);
   }

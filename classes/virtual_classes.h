@@ -7,9 +7,9 @@
 class BackwardClass {
 public:
     virtual ~BackwardClass() = default;
-    virtual double* values_pointer() = 0;
-    virtual double* grad_pointer() = 0;
-    virtual void backward(double *derivatives) = 0;
+    virtual float* values_pointer() = 0;
+    virtual float* grad_pointer() = 0;
+    virtual void backward(float *derivatives) = 0;
     virtual void zero_grad() = 0;
 };
 

@@ -61,7 +61,7 @@ class layer
 
     // Backpropagation functions
     void zero_grad();
-    void update(double learning_rate);
+    void update(float learning_rate);
 
     // Getters
     BackwardClass *get_output();
@@ -79,7 +79,7 @@ layer::layer(int input_size, int output_size, Activation_name function_name){
   this->W = new weights(input_size, output_size);
   this->function_name = function_name;
   this->in = nullptr;
-  double *output_buffer = new double[output_size];
+  float *output_buffer = new float[output_size];
   this->out = new activation_function(output_size, output_buffer, function_name, this->W);
 }
 
@@ -95,9 +95,9 @@ layer::~layer(){
 // Operator to evaluate the output
 void layer::operator()(BackwardClass *in){
   this->in = in;
-  double *weights_output = (*this->W)(in);
+  float *weights_output = (*this->W)(in);
   
-  double *out_buffer = this->out->values_pointer();
+  float *out_buffer = this->out->values_pointer();
   for(int i = 0; i < this->output_size; i++){
     out_buffer[i] = weights_output[i];
   }
@@ -116,7 +116,7 @@ void layer::zero_grad(){
   }
 }
 
-void layer::update(double learning_rate){
+void layer::update(float learning_rate){
   this->W->update(learning_rate);
 }
 

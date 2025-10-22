@@ -8,25 +8,25 @@
 
 class softmax : public BackwardClass {
   private:
-    double *value;
-    double *grad;
+    float *value;
+    float *grad;
     int size;
-    double temperature;
+    float temperature;
     BackwardClass *pred;
 
   public:
     // Constructors
-    softmax(int size, double *value, BackwardClass *pred);
-    softmax(int size, double *value, double temperature, BackwardClass *pred);
+    softmax(int size, float *value, BackwardClass *pred);
+    softmax(int size, float *value, float temperature, BackwardClass *pred);
     // Destructor
     ~softmax();
     // Getters
-    double *values_pointer() override;
-    double *grad_pointer() override;
+    float *values_pointer() override;
+    float *grad_pointer() override;
     int get_prediction();
-    double get_prediction_probability(int index);
+    float get_prediction_probability(int index);
     // Methods
-    void backward(double *derivatives) override;
+    void backward(float *derivatives) override;
     void zero_grad() override;
     void operator()();
     // Testing functions
@@ -36,26 +36,26 @@ class softmax : public BackwardClass {
 
 /* CONSTRUCTORS AND DESTRUCTOR */
 // Constructor
-softmax::softmax(int size, double *value, BackwardClass *pred){
+softmax::softmax(int size, float *value, BackwardClass *pred){
   this->size = size;
   this->value = value;
   this->pred = pred;
-  this->temperature = 1.0;
-  this->grad = new double[size];
+  this->temperature = 1.0f;
+  this->grad = new float[size];
   for(int i = 0; i < size; i++){
-    this->grad[i] = 0.0;
+    this->grad[i] = 0.0f;
   }
 }
 
 // Constructor with temperature
-softmax::softmax(int size, double *value, double temperature, BackwardClass *pred){
+softmax::softmax(int size, float *value, float temperature, BackwardClass *pred){
   this->size = size;
   this->value = value;
   this->temperature = temperature;
   this->pred = pred;
-  this->grad = new double[size];
+  this->grad = new float[size];
   for(int i = 0; i < size; i++){
-    this->grad[i] = 0.0;
+    this->grad[i] = 0.0f;
   }
 }
 
@@ -67,12 +67,12 @@ softmax::~softmax(){
 
 /* GETTERS */
 // Get the values pointer
-double *softmax::values_pointer(){
+float *softmax::values_pointer(){
   return this->value;
 }
 
 // Get the gradient pointer
-double *softmax::grad_pointer(){
+float *softmax::grad_pointer(){
   return this->grad;
 }
 
@@ -86,7 +86,7 @@ int softmax::get_prediction(){
   return max_val_indx;
 }
 
-double softmax::get_prediction_probability(int index){
+float softmax::get_prediction_probability(int index){
   return this->value[index];
 }
 
@@ -94,7 +94,7 @@ double softmax::get_prediction_probability(int index){
 // Operator to apply the softmax function
 void softmax::operator()(){
   // Find max value for numerical stability
-  double max_val = this->value[0];
+  float max_val = this->value[0];
   for(int i = 1; i < this->size; i++){
     if(this->value[i] > max_val){
       max_val = this->value[i];
@@ -104,14 +104,14 @@ void softmax::operator()(){
   // Compute exp(x - max) and sum for numerical stability
   // This is mathematically equivalent to the softmax function, but it is more numerically stable.
   // This is just the softmax function multiplied by e^(-max_val)/e^(-max_val) = 1
-  double Z = 0;
+  float Z = 0.f;
   for(int i = 0; i < this->size; i++){
-    Z += exp((this->value[i] - max_val) / this->temperature);
+    Z += expf((this->value[i] - max_val) / this->temperature);
   }
   
   // Normalize
   for(int i = 0; i < this->size; i++){
-    this->value[i] = exp((this->value[i] - max_val) / this->temperature) / Z;
+    this->value[i] = expf((this->value[i] - max_val) / this->temperature) / Z;
   }
 }
 
@@ -121,13 +121,13 @@ void softmax::zero_grad(){
 }
 
 // Backward pass
-void softmax::backward(double *derivatives){
-  double dot = 0.0;
+void softmax::backward(float *derivatives){
+  float dot = 0.0f;
   for (int k = 0; k < this->size; ++k) {
     dot += this->value[k] * derivatives[k];
   }
 
-  double *prevGrad = new double[this->size];
+  float *prevGrad = new float[this->size];
   for (int j = 0; j < this->size; ++j) {
     prevGrad[j] = this->value[j] * (derivatives[j] - dot) / this->temperature;
   }
