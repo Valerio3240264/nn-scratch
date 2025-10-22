@@ -45,26 +45,26 @@ using namespace std;
 class layer
 {
   private:
-    input *in;
+    BackwardClass *in;
     activation_function *out;
     weights* W;
-    double input_size;
-    double output_size;
+    int input_size;
+    int output_size;
     Activation_name function_name;
 
   public:
-    layer(double input_size, double output_size, Activation_name activation_function);
+    layer(int input_size, int output_size, Activation_name activation_function);
     ~layer();
 
     // Methods
-    void operator()(input *in);
+    void operator()(BackwardClass *in);
 
     // Backpropagation functions
     void zero_grad();
     void update(double learning_rate);
 
     // Getters
-    input *get_output();
+    BackwardClass *get_output();
 
     // Print functions
     void print_weights();
@@ -73,13 +73,14 @@ class layer
 
 /* CONSTRUCTOR AND DESTRUCTOR */
 // Constructor
-layer::layer(double input_size, double output_size, Activation_name function_name){
+layer::layer(int input_size, int output_size, Activation_name function_name){
   this->input_size = input_size;
   this->output_size = output_size;
   this->W = new weights(input_size, output_size);
-  this->out = nullptr;
-  this->in = nullptr;
   this->function_name = function_name;
+  this->in = nullptr;
+  double *output_buffer = new double[output_size];
+  this->out = new activation_function(output_size, output_buffer, function_name, this->W);
 }
 
 // Destructor
@@ -92,19 +93,27 @@ layer::~layer(){
 
 /* METHODS */
 // Operator to evaluate the output
-void layer::operator()(input *in){
+void layer::operator()(BackwardClass *in){
   this->in = in;
-  double *weights_output = new double[this->output_size];
-  weights_output = (*this->W)(in);
-  this->out = new activation_function(this->output_size, weights_output, this->function_name, this->W);
+  double *weights_output = (*this->W)(in);
+  
+  double *out_buffer = this->out->values_pointer();
+  for(int i = 0; i < this->output_size; i++){
+    out_buffer[i] = weights_output[i];
+  }
+  
   this->out->operator()();
 }
 
 // BACKPROPAGATION FUNCTIONS
 void layer::zero_grad(){
   this->W->zero_grad();
-  this->out->zero_grad();
-  this->in->zero_grad();
+  if(this->out != nullptr){
+    this->out->zero_grad();
+  }
+  if(this->in != nullptr){
+    this->in->zero_grad();
+  }
 }
 
 void layer::update(double learning_rate){
@@ -112,8 +121,8 @@ void layer::update(double learning_rate){
 }
 
 /* GETTERS */
-input *layer::get_output(){
-  return new input(this->output_size, this->out);
+BackwardClass *layer::get_output(){
+  return this->out;
 }
 
 /* PRINT FUNCTIONS */

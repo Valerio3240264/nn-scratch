@@ -9,4 +9,9 @@ enum Activation_name {
   LINEAR
 };
 
+enum Loss_name {
+  MSE,
+  CROSS_ENTROPY
+};
+
 #endif

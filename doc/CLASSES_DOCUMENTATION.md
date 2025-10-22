@@ -6,10 +6,22 @@ This documentation provides a comprehensive overview of all classes in the neura
 
 The neural network follows this computational flow:
 ```
-Input -> Weights -> Activation_function -> Layer -> MLP -> Loss
+Input -> Weights -> Activation_function -> Layer -> MLP -> [Softmax (optional)] -> Loss
 ```
 
-The backpropagation uses a graph-based approach where each component has a predecessor pointer for gradient flow.
+**Detailed Layer Flow:**
+```
+Input -> [Layer 1: Weights -> Activation] -> [Layer 2: Weights -> Activation] -> ... -> [Layer N: Weights -> Activation] -> [Softmax (optional)] -> Loss (MSE or Cross-Entropy)
+```
+
+The backpropagation uses a graph-based approach where each component has a predecessor pointer for gradient flow. The gradient flows backward through the computational graph from the loss function to the input.
+
+**Key Features:**
+- Per-layer activation functions (RELU, TANH, LINEAR, SIGMOID, SOFTMAX)
+- Multiple loss functions (MSE for regression, Cross-Entropy for classification)
+- Optional softmax layer for classification tasks
+- Xavier/Glorot weight initialization for improved convergence
+- Modular design with clean separation of concerns
 
 ## Table of Contents
 
@@ -18,10 +30,14 @@ The backpropagation uses a graph-based approach where each component has a prede
 3. [Input Management](#input-management)
 4. [Weight Management](#weight-management)
 5. [Activation Functions](#activation-functions)
-6. [Layer Implementation](#layer-implementation)
-7. [Multi-Layer Perceptron (MLP)](#multi-layer-perceptron-mlp)
-8. [Loss Function](#loss-function)
-9. [TODO Items](#todo-items)
+6. [Softmax Activation](#softmax-activation)
+7. [Layer Implementation](#layer-implementation)
+8. [Multi-Layer Perceptron (MLP)](#multi-layer-perceptron-mlp)
+9. [Loss Functions](#loss-functions)
+   - [Base Loss Class](#base-loss-class)
+   - [MSE Loss](#mse-loss)
+   - [Cross-Entropy Loss](#cross-entropy-loss)
+10. [TODO Items](#todo-items)
 
 ---
 
@@ -53,6 +69,15 @@ Defines available activation function types for the neural network.
 - `TANH`: Hyperbolic tangent activation
 - `SOFTMAX`: Softmax activation (for classification)
 - `LINEAR`: Linear activation (no transformation)
+
+### Loss_name (enums.h)
+
+**PURPOSE:**
+Defines available loss function types for the neural network.
+
+**Values:**
+- `MSE`: Mean Squared Error (for regression tasks)
+- `CROSS_ENTROPY`: Cross-Entropy loss (for classification tasks)
 
 ---
 
@@ -102,7 +127,7 @@ This class is used to store the weights of a layer and perform the matrix multip
 - `pred`: pointer to the predecessor (this pointer can be seen as an edge in the computational graph of the neural network)
 
 **Constructors:**
-- `weights(int input_size, int output_size)`: creates a new array for the weights and gradients arrays and sets the predecessor to nullptr
+- `weights(int input_size, int output_size)`: creates a new array for the weights and gradients arrays and sets the predecessor to nullptr. Weights are initialized using Xavier/Glorot initialization (scaled by `sqrt(1/input_size)`) for better convergence.
 
 **Methods:**
 - `values_pointer()`: returns the pointer to the weights array
@@ -110,7 +135,7 @@ This class is used to store the weights of a layer and perform the matrix multip
 - `operator()(BackwardClass *in)`: performs the matrix multiplication between the weights and the input values
 - `zero_grad()`: sets all the gradients to 0
 - `backward(double *derivatives)`: accumulates the gradients and propagates them to the predecessor
-- `update(double learning_rate)`: updates the weights using the computed gradients
+- `update(double learning_rate)`: updates the weights using gradient descent (w = w - learning_rate * gradient)
 - `print_weights()`: prints the weights array
 - `print_grad_weights()`: prints the gradients array
 
@@ -146,6 +171,43 @@ This class is used to store the values and gradients of the activation_function 
 - **TANH**: `f(x) = tanh(x)`, derivative: `f'(x) = 1 - f(x)²`
 - **RELU**: `f(x) = max(0, x)`, derivative: `f'(x) = 1 if x > 0, else 0`
 - **LINEAR**: `f(x) = x`, derivative: `f'(x) = 1`
+
+---
+
+## Softmax Activation
+
+### softmax (softmax.h)
+
+**PURPOSE:**
+This class implements the softmax activation function, commonly used as the final layer in multi-class classification problems. It converts raw scores (logits) into probabilities that sum to 1. The softmax is typically paired with cross-entropy loss for optimal training of classification networks.
+
+**Attributes:**
+- `value`: pointer to the values array (probabilities after softmax)
+- `grad`: pointer to the gradients array
+- `size`: size of the values and gradients arrays
+- `temperature`: temperature parameter for controlling the sharpness of the probability distribution (default: 1.0)
+- `pred`: pointer to the predecessor (this pointer can be seen as an edge in the computational graph of the neural network)
+
+**Constructors:**
+- `softmax(int size, double *value, BackwardClass *pred)`: creates a new softmax layer with default temperature (1.0)
+- `softmax(int size, double *value, double temperature, BackwardClass *pred)`: creates a new softmax layer with custom temperature
+
+**Methods:**
+- `values_pointer()`: returns the pointer to the values array
+- `grad_pointer()`: returns the pointer to the gradients array
+- `operator()()`: applies the softmax function to the values array with numerical stability (subtracts max value to prevent overflow)
+- `zero_grad()`: no operation (gradients are handled in backward pass)
+- `backward(double *derivatives)`: computes the Jacobian-vector product for softmax gradient
+- `get_prediction()`: returns the index of the highest probability (predicted class)
+- `get_prediction_probability(int index)`: returns the probability for a specific class
+- `print_value()`: prints the probability values
+- `print_grad()`: prints the gradients array
+
+**Softmax Function Implementation:**
+- Forward: `softmax(x_i) = exp((x_i - max(x)) / T) / sum(exp((x_j - max(x)) / T))`
+  - Uses numerical stability trick (subtracting max) to prevent overflow
+  - Temperature parameter T controls sharpness (lower T = sharper distribution)
+- Backward: Uses Jacobian matrix multiplication: `grad_i = softmax_i * (derivative_i - dot(softmax, derivatives)) / T`
 
 ---
 
@@ -187,64 +249,122 @@ Input -> Weights -> Activation_function -> Output
 ### mlp (mlp.h)
 
 **PURPOSE:**
-This class is used to store the layers, input size, output size and activation function name of a multi-layer perceptron.
+This class is used to store the layers, input size, output size and activation functions of a multi-layer perceptron. It supports different activation functions per layer and different loss functions (MSE, Cross-Entropy). The MLP can optionally include a softmax layer before the loss, which is recommended for classification tasks using cross-entropy loss.
 
 **Architecture:**
 ```
-layer_0 -> layer_1 -> ... -> layer_n-1 -> layer_n
+layer_0 -> layer_1 -> ... -> layer_n-1 -> layer_n -> [softmax (optional)] -> loss
 ```
 
 **Attributes:**
-- `layers`: pointer to the layers (Layer class)
+- `layers`: pointer array to the layers (Layer class)
 - `num_layers`: number of layers
 - `input_size`: size of the input
 - `output_size`: size of the output
-- `function_name`: name of the activation function
+- `activation_functions`: array of activation functions (one per layer)
+- `loss_function`: type of loss function to use (MSE or CROSS_ENTROPY)
+- `has_softmax`: flag indicating if softmax layer is present
+- `softmax_layer`: pointer to optional softmax layer (for classification)
+- `softmax_values`: buffer for softmax output values
+- `mse_loss_layer`: pointer to MSE loss layer (if using MSE)
+- `ce_loss_layer`: pointer to cross-entropy loss layer (if using CROSS_ENTROPY)
+- `current_loss`: accumulated loss value
 
 **Constructors:**
-- `mlp(int input_size, int output_size, int num_layers, int *hidden_sizes, Activation_name activation_function)`: creates a new mlp with the passed input size, output size, number of layers and hidden sizes
-- `~mlp()`: destructor to delete the layers
+- `mlp(int input_size, int output_size, int num_layers, int *hidden_sizes, Activation_name *activation_functions, Loss_name loss_function, bool use_softmax = false)`: creates a new mlp with the passed parameters. Each layer can have its own activation function. If use_softmax is true, adds a softmax layer before the loss (recommended for cross-entropy).
+- `mlp(int input_size, int output_size, int num_layers, int *hidden_sizes, Activation_name activation_function)`: legacy constructor where all layers use the same activation function and MSE loss (for backward compatibility)
+- `~mlp()`: destructor to delete the layers, softmax layer, and loss layers
 
 **Methods:**
-- `operator()(input *in)`: evaluates the output of the mlp
-- `compute_loss(input *target)`: computes the loss of the mlp. It also computes the gradients of the whole neural network calling the backward pass on the loss that will be linked with the last layer and so on until the input layer
+- `operator()(BackwardClass *in)`: evaluates the output of the mlp (forward pass through all layers)
+- `compute_loss(double *target)`: computes the loss with target array and performs backward pass
+- `compute_loss(int target_index)`: computes the loss with target class index (for classification) and performs backward pass
+- `get_loss()`: returns the current accumulated loss value
+- `zero_loss()`: resets the accumulated loss to 0
+- `get_prediction()`: returns the predicted class index (requires softmax layer)
+- `get_prediction_probability(int index)`: returns the probability for a specific class (requires softmax layer)
 - `update(double learning_rate)`: updates the weights using the computed gradients
 - `zero_grad()`: sets all the gradients to 0
-- `print_weights()`: prints the weights
-- `print_grad_weights()`: prints the gradients of the weights
+- `print_weights()`: prints the weights of all layers
+- `print_grad_weights()`: prints the gradients of the weights of all layers
+- `print_loss()`: prints the current loss value
 
 ---
 
-## Loss Function
+## Loss Functions
 
-### loss (loss.h)
+The neural network implementation provides multiple loss functions for different tasks. All loss functions inherit from `BackwardClass` and participate in the backpropagation graph.
+
+### MSE Loss
+
+#### mse_loss (mse_loss.h)
 
 **PURPOSE:**
-This class is used to store the loss value and the gradients of the loss function. It also stores a pointer to the target values and the predecessor pointer to perform the backward pass on the whole neural network.
+Mean Squared Error loss function specifically designed for regression tasks. Returns a scalar loss value (averaged over all outputs) rather than per-element losses. This is the recommended loss function for regression problems.
 
 **Attributes:**
-- `pred`: pointer to the predecessor (this pointer can be seen as an edge in the computational graph of the neural network)
+- `pred`: pointer to the predecessor (output layer)
 - `target`: pointer to the target values
 - `grad`: pointer to the gradients
-- `loss_value`: pointer to the loss values
-- `size`: size of the loss_value and grad arrays
+- `loss_value`: scalar loss value
+- `size`: number of outputs
 
 **Constructors:**
-- `loss(BackwardClass *pred, int size)`: creates a new array for the gradients and loss value arrays and sets the predecessor to the passed pointer (The target pointer will be set when the operator() is called)
-- `loss(BackwardClass *pred, int size, double *target)`: creates a new array for the gradients and loss value arrays and sets the predecessor to the passed pointer and the target to the passed pointer
+- `mse_loss(BackwardClass *pred, int size)`: creates a new MSE loss layer without target (target set later)
+- `mse_loss(BackwardClass *pred, int size, double *target)`: creates a new MSE loss layer with target
 
 **Methods:**
-- `operator()(double *target)`: sets the target values and calculates the loss value
-- `operator()()`: calculates the loss value
-- `zero_grad()`: sets all the gradients to 0
-- `backward(double *derivatives)`: accumulates the gradients and propagates them to the predecessor
+- `operator()(double *target)`: sets target and computes loss
+- `operator()()`: computes loss with stored target
+- `backward()`: simplified backward pass (assumes derivative of loss w.r.t. itself is 1)
+- `backward(double *derivatives)`: backward pass with incoming derivatives
+- `zero_grad()`: sets all gradients to 0
+- `values_pointer()`: returns pointer to scalar loss value
+- `grad_pointer()`: returns pointer to gradients array
+- `get_loss()`: returns the scalar loss value
 - `print_loss()`: prints the loss value
 - `print_grad()`: prints the gradients
 
-**Loss Function Implementation:**
-Currently implements **Mean Squared Error (MSE)**:
-- Forward: `loss = (prediction - target)²`
-- Backward: `gradient = 2 * (prediction - target) * derivatives`
+**Formula:**
+- Forward: `L = (1/n) * sum((prediction - target)²)`
+- Backward: `dL/dprediction[i] = (2/n) * (prediction[i] - target[i])`
+
+### Cross-Entropy Loss
+
+#### cross_entropy_loss (cross_entropy_loss.h)
+
+**PURPOSE:**
+Cross-Entropy loss function for multi-class classification tasks. This is the standard loss function for classification problems and should be used with softmax activation. It provides numerically stable gradients and measures the KL divergence between predicted and true probability distributions.
+
+**Attributes:**
+- `pred`: pointer to the predecessor (typically softmax layer)
+- `target`: pointer to the target values (one-hot encoded)
+- `grad`: pointer to the gradients
+- `loss_value`: scalar loss value
+- `size`: number of classes
+
+**Constructors:**
+- `cross_entropy_loss(BackwardClass *pred, int size)`: creates a new cross-entropy loss layer without target
+- `cross_entropy_loss(BackwardClass *pred, int size, double *target)`: creates a new cross-entropy loss layer with one-hot target
+
+**Methods:**
+- `operator()(double *target)`: sets one-hot encoded target and computes loss
+- `operator()(int target_index)`: sets target using class index (converts to one-hot) and computes loss
+- `operator()()`: computes loss with stored target
+- `backward()`: simplified backward pass for softmax + cross-entropy combination
+- `backward(double *derivatives)`: backward pass with incoming derivatives
+- `zero_grad()`: sets all gradients to 0
+- `values_pointer()`: returns pointer to scalar loss value
+- `grad_pointer()`: returns pointer to gradients array
+- `get_loss()`: returns the scalar loss value
+- `print_loss()`: prints the loss value
+- `print_grad()`: prints the gradients
+
+**Formula:**
+- Forward: `L = -sum(target * log(prediction + ε))` where ε = 1e-15 for numerical stability
+- Backward (with softmax): `dL/dprediction[i] = prediction[i] - target[i]` (beautiful simplification!)
+
+**Note:** When combined with softmax, the gradient simplifies to `prediction - target`, which provides stable and efficient training for classification tasks.
 
 ---
 
@@ -252,16 +372,18 @@ Currently implements **Mean Squared Error (MSE)**:
 
 The following TODO items have been identified across the codebase for future development:
 
+### Input (input.h)
+1. Add batch representation
+
 ### Activation Function (activation_function.h)
 1. Create a function to evaluate the output of a whole batch
 2. Create a function to evaluate the gradient of a whole batch
-3. Optimize the batch operations using personalized cuda kernels
 
 ### Layer (layer.h)
 1. Create functions to evaluate the output and gradient of a whole batch
 
-### Loss Function (loss.h)
-1. Write a backward function that does not need to know the derivatives value since it is the first step of the backward pass and the derivatives are known
+### Loss Functions (mse_loss.h and cross_entropy_loss.h)
+1. Write a backward function that does not need to know the derivatives value since it is the first step of the backward pass and the derivatives are known (✓ Partially completed in mse_loss and cross_entropy_loss)
 2. Create a function to evaluate the loss of a whole batch
 3. Create a function to evaluate the gradient of a whole batch
 4. Optimize the batch operations using personalized cuda kernels
@@ -271,18 +393,78 @@ The following TODO items have been identified across the codebase for future dev
 2. Optimize the batch operations using personalized cuda kernels
 
 ### Weights (weights.h)
-1. Optimize the matrix multiplication using a personalized CUDA kernel
-2. Optimize the gradient computation using a personalized CUDA kernel
-3. Create a function to evaluate to process a whole batch of data (not only one single data point)
-4. Create a function to evaluate the gradient of a whole batch
-5. Optimize the batch operations using personalized cuda kernels
+1. Create a function to evaluate to process a whole batch of data
+2. Create a function to evaluate the gradient of a whole batch
 
 ---
 
-## Usage Example
+## Usage Examples
+
+### Example 1: Classification with Cross-Entropy Loss (Recommended for Classification)
 
 ```cpp
-// Create an MLP with 2 hidden layers
+// Create an MLP for MNIST digit classification (784 inputs -> 10 outputs)
+// Architecture: 784 -> 128 (RELU) -> 64 (RELU) -> 10 (LINEAR) -> Softmax -> Cross-Entropy
+int hidden_sizes[] = {128, 64};
+Activation_name activations[] = {RELU, RELU, LINEAR};
+mlp network(784, 10, 3, hidden_sizes, activations, CROSS_ENTROPY, true);
+
+// Create input data
+input* data = new input(784);
+// ... populate data with pixel values ...
+
+// Forward pass
+BackwardClass* output = network(data);
+
+// Compute loss and backward pass (using class index)
+int target_label = 7;  // The digit is 7
+network.compute_loss(target_label);
+
+// Update weights and reset gradients
+network.update(0.01);  // learning rate = 0.01
+network.zero_grad();
+network.zero_loss();   // reset accumulated loss
+
+// Get predictions
+int predicted_class = network.get_prediction();
+double confidence = network.get_prediction_probability(predicted_class);
+double loss = network.get_loss();
+```
+
+### Example 2: Regression with MSE Loss
+
+```cpp
+// Create an MLP for regression (10 inputs -> 1 output)
+int hidden_sizes[] = {64, 32};
+Activation_name activations[] = {RELU, RELU, LINEAR};
+mlp network(10, 1, 3, hidden_sizes, activations, MSE, false);
+
+// Create input data
+input* data = new input(10);
+// ... populate data ...
+
+// Forward pass
+BackwardClass* output = network(data);
+
+// Create target (regression target)
+double target[] = {42.5};
+
+// Compute loss and backward pass
+network.compute_loss(target);
+
+// Update weights
+network.update(0.001);
+network.zero_grad();
+network.zero_loss();
+
+double loss = network.get_loss();
+```
+
+### Example 3: Legacy Constructor (Backward Compatible)
+
+```cpp
+// All layers use the same activation function (RELU)
+// Uses MSE loss by default
 int hidden_sizes[] = {64, 32};
 mlp network(784, 10, 2, hidden_sizes, RELU);
 
@@ -291,16 +473,53 @@ input* data = new input(784);
 // ... populate data ...
 
 // Forward pass
-input* output = network(data);
+BackwardClass* output = network(data);
 
 // Create target
-input* target = new input(10);
-// ... populate target ...
+double target[10] = {0, 0, 0, 1, 0, 0, 0, 0, 0, 0};  // one-hot encoded
 
 // Backward pass and update
 network.compute_loss(target);
-network.update(0.01);  // learning rate = 0.01
-network.zero_grad();   // prepare for next iteration
+network.update(0.01);
+network.zero_grad();
 ```
+
+### Example 4: Training Loop for Classification
+
+```cpp
+// Setup network
+int hidden_sizes[] = {128, 64};
+Activation_name activations[] = {RELU, RELU, LINEAR};
+mlp network(784, 10, 3, hidden_sizes, activations, CROSS_ENTROPY, true);
+
+// Training loop
+for (int epoch = 0; epoch < 10; epoch++) {
+    network.zero_loss();
+    
+    for (int i = 0; i < num_samples; i++) {
+        // Create input
+        input* data = new input(784);
+        // ... load sample i into data ...
+        
+        // Forward pass
+        network(data);
+        
+        // Backward pass with target label
+        int label = labels[i];
+        network.compute_loss(label);
+        
+        // Update weights
+        network.update(0.01);
+        network.zero_grad();
+        
+        delete data;
+    }
+    
+    double avg_loss = network.get_loss() / num_samples;
+    cout << "Epoch " << epoch << ", Loss: " << avg_loss << endl;
+}
+```
+
+---
 
 This documentation strictly follows the documentation structure and content found in each class header file, preserving all the specific details, method signatures, and architectural decisions described in the original source code.

@@ -4,7 +4,9 @@
 #include "layer.h"
 #include "cpu/input.h"
 #include "cpu/activation_function.h"
-#include "loss.h" 
+#include "cpu/softmax.h"
+#include "cpu/mse_loss.h"
+#include "cpu/cross_entropy_loss.h"
 #include "enums.h"
 
 /*TODO
@@ -15,26 +17,34 @@
 /*
 MLP CLASS DOCUMENTATION:
 PURPOSE:
-This class is used to store the layers, input size, output size and activation function name of a multi-layer perceptron.
+This class is used to store the layers, input size, output size and activation functions of a multi-layer perceptron.
+Supports different activation functions per layer and different loss functions (MSE, Cross-Entropy).
 
 Architecture:
-layer_0 -> layer_1 -> ... -> layer_n-1 -> layer_n
+layer_0 -> layer_1 -> ... -> layer_n-1 -> [softmax (optional)] -> loss
 
 Attributes:
 - layers: pointer to the layers (Layer class)
 - num_layers: number of layers
 - input_size: size of the input
 - output_size: size of the output
-- function_name: name of the activation function
+- activation_functions: array of activation functions (one per layer)
+- loss_function: type of loss function to use
+- softmax_layer: optional softmax layer (for classification with cross-entropy)
+- has_softmax: flag indicating if softmax layer is present
 
 Constructors:
-- mlp(int input_size, int output_size, int num_layers, int *hidden_sizes, Activation_name activation_function): creates a new mlp with the passed input size, output size, number of layers and hidden sizes.
-- ~mlp(): destructor to delete the layers.
+- mlp(int input_size, int output_size, int num_layers, int *hidden_sizes, 
+      Activation_name *activation_functions, Loss_name loss_function, bool use_softmax):
+  Creates a new mlp with the passed parameters. Each layer can have its own activation function.
+  If use_softmax is true, adds a softmax layer before the loss (recommended for cross-entropy).
+- ~mlp(): destructor to delete the layers and softmax layer.
 
 Methods:
 - operator()(input *in): evaluates the output of the mlp.
-- compute_loss(input *target): computes the loss of the mlp. 
-  It also computes the gradients of the whole neural network calling the backward pass on the loss that will be linked with the last layer and so on until the input layer.
+- compute_loss(double *target): computes the loss with target array.
+- compute_loss(int target_index): computes the loss with target index (for classification).
+- get_loss(): returns the loss value.
 - update(double learning_rate): updates the weights using the computed gradients.
 - zero_grad(): sets all the gradients to 0.
 - print_weights(): prints the weights.
@@ -46,19 +56,39 @@ using namespace std;
 
 class mlp{
   private:
-    layer **layers;  // Change to pointer to pointers
+    layer **layers;
     int num_layers;
     int input_size;
     int output_size;
-    Activation_name function_name;
+    Activation_name *activation_functions;
+    Loss_name loss_function;
+    bool has_softmax;
+    softmax *softmax_layer;
+    double *softmax_values;
+    mse_loss *mse_loss_layer;
+    cross_entropy_loss *ce_loss_layer;
+    double current_loss;
 
   public:
+    // Constructor with activation functions per layer and loss function
+    mlp(int input_size, int output_size, int num_layers, int *hidden_sizes, 
+        Activation_name *activation_functions, Loss_name loss_function, bool use_softmax = false);
+    
+    // Simple constructor (all layers use same activation)
     mlp(int input_size, int output_size, int num_layers, int *hidden_sizes, Activation_name activation_function);
+    
     ~mlp();
 
+    // Getters
+    int get_prediction();
+    double get_prediction_probability(int index);
+
     // Methods
-    input* operator()(input *in);  // Change return type
-    void compute_loss(input *target);  // Rename to avoid confusion
+    BackwardClass* operator()(BackwardClass *in);
+    void compute_loss(double *target);
+    void compute_loss(int target_index);
+    double get_loss();
+    void zero_loss();
     
     // Backpropagation functions
     void update(double learning_rate);
@@ -67,22 +97,80 @@ class mlp{
     // Print functions
     void print_weights();
     void print_grad_weights();
+    void print_loss();
 };
 
 /* CONSTRUCTOR AND DESTRUCTOR */
+mlp::mlp(int input_size, int output_size, int num_layers, int *hidden_sizes, 
+         Activation_name *activation_functions, Loss_name loss_function, bool use_softmax){
+  this->input_size = input_size;
+  this->output_size = output_size;
+  this->num_layers = num_layers;
+  this->activation_functions = new Activation_name[num_layers];
+  for(int i = 0; i < num_layers; i++){
+    this->activation_functions[i] = activation_functions[i];
+  }
+  this->loss_function = loss_function;
+  this->has_softmax = use_softmax;
+  this->current_loss = 0.0;
+  this->layers = new layer*[num_layers]; 
+
+  // Create layers
+  if(num_layers > 1){
+    this->layers[0] = new layer(input_size, hidden_sizes[0], activation_functions[0]);
+    for(int i = 1; i < num_layers - 1; i++){
+      this->layers[i] = new layer(hidden_sizes[i-1], hidden_sizes[i], activation_functions[i]);
+    }
+    this->layers[num_layers - 1] = new layer(hidden_sizes[num_layers - 2], output_size, activation_functions[num_layers - 1]);
+  }
+  else if(num_layers == 1){
+    this->layers[0] = new layer(input_size, output_size, activation_functions[0]);
+  }
+  else{
+    cout<<"Error: num_layers must be greater than 0"<<endl;
+    exit(1);
+  }
+  
+  if(use_softmax){
+    this->softmax_values = new double[output_size];
+    BackwardClass *last_layer_act = layers[num_layers - 1]->get_output();
+    this->softmax_layer = new softmax(output_size, softmax_values, last_layer_act);
+  } else {
+    this->softmax_values = nullptr;
+    this->softmax_layer = nullptr;
+  }
+  
+  BackwardClass *loss_predecessor = use_softmax ? 
+    (BackwardClass*)this->softmax_layer : 
+    (BackwardClass*)layers[num_layers - 1]->get_output();
+  
+  if(loss_function == MSE){
+    this->mse_loss_layer = new mse_loss(loss_predecessor, output_size);
+    this->ce_loss_layer = nullptr;
+  } else {
+    this->ce_loss_layer = new cross_entropy_loss(loss_predecessor, output_size);
+    this->mse_loss_layer = nullptr;
+  }
+}
+
+// Legacy constructor (all layers use same activation)
 mlp::mlp(int input_size, int output_size, int num_layers, int *hidden_sizes, Activation_name function_name){
   this->input_size = input_size;
   this->output_size = output_size;
   this->num_layers = num_layers;
-  this->function_name = function_name;
+  this->activation_functions = new Activation_name[num_layers];
+  for(int i = 0; i < num_layers; i++){
+    this->activation_functions[i] = function_name;
+  }
+  this->loss_function = MSE;
+  this->has_softmax = false;
+  this->current_loss = 0.0;
   this->layers = new layer*[num_layers]; 
 
   if(num_layers > 1){
     this->layers[0] = new layer(input_size, hidden_sizes[0], function_name);
     for(int i = 1; i < num_layers - 1; i++){
-      cout<<"Creating layer: "<<i<<endl;
       this->layers[i] = new layer(hidden_sizes[i-1], hidden_sizes[i], function_name);
-      cout<<"Layer "<<i<<" created"<<endl;
     }
     this->layers[num_layers - 1] = new layer(hidden_sizes[num_layers - 2], output_size, function_name);
   }
@@ -93,6 +181,13 @@ mlp::mlp(int input_size, int output_size, int num_layers, int *hidden_sizes, Act
     cout<<"Error: num_layers must be greater than 0"<<endl;
     exit(1);
   }
+  
+  this->softmax_values = nullptr;
+  this->softmax_layer = nullptr;
+  
+  BackwardClass *loss_predecessor = layers[num_layers - 1]->get_output();
+  this->mse_loss_layer = new mse_loss(loss_predecessor, output_size);
+  this->ce_loss_layer = nullptr;
 }
 
 mlp::~mlp(){
@@ -100,32 +195,88 @@ mlp::~mlp(){
     delete layers[i];
   }
   delete[] layers;
+  delete[] activation_functions;
+  
+  delete softmax_layer;
+  delete[] softmax_values;
+  
+  delete mse_loss_layer;
+  delete ce_loss_layer;
+}
+
+/* GETTERS */
+int mlp::get_prediction(){
+  return this->softmax_layer->get_prediction();
+}
+
+double mlp::get_prediction_probability(int index){
+  return this->softmax_layer->get_prediction_probability(index);
 }
 
 /* METHODS */
-input* mlp::operator()(input *in){
-  input *out = in;
+BackwardClass* mlp::operator()(BackwardClass *in){
+  BackwardClass *out = in;
+  
+  // Forward pass through all layers
   for(int i = 0; i < this->num_layers; i++){
     layers[i]->operator()(out);
     out = layers[i]->get_output();
   }
+  
+  // Use softmax if needed
+  if(this->has_softmax){
+    double *last_values = out->values_pointer();
+    for(int i = 0; i < this->output_size; i++){
+      this->softmax_values[i] = last_values[i];
+    }
+    this->softmax_layer->operator()();
+    
+    return this->softmax_layer;
+  }
+
   return out;
 }
 
-void mlp::compute_loss(input *target){
-  input *final_output = layers[this->num_layers - 1]->get_output();
-  loss *loss_fn = new loss(final_output, this->output_size, target->values_pointer());
-  loss_fn->operator()();
-  
-  // Start backward pass
-  double *ones = new double[this->output_size];
-  for(int i = 0; i < this->output_size; i++){
-    ones[i] = 1.0;
+// Compute loss with target array
+void mlp::compute_loss(double *target){
+  if(this->loss_function == MSE){
+    this->mse_loss_layer->operator()(target);
+    this->current_loss += this->mse_loss_layer->get_loss();
+    this->mse_loss_layer->backward();
+  } else if(this->loss_function == CROSS_ENTROPY){
+    this->ce_loss_layer->operator()(target);
+    this->current_loss += this->ce_loss_layer->get_loss();
+    this->ce_loss_layer->backward();
   }
-  loss_fn->backward(ones);
-  
-  delete[] ones;
-  delete loss_fn;
+}
+
+// Compute loss with target index (for classification)
+void mlp::compute_loss(int target_index){
+  if(this->loss_function == MSE){
+    // Convert target index to one-hot for MSE
+    double *target = new double[this->output_size];
+    for(int i = 0; i < this->output_size; i++){
+      target[i] = (i == target_index) ? 1.0 : 0.0;
+    }
+    this->mse_loss_layer->operator()(target);
+    this->current_loss += this->mse_loss_layer->get_loss();
+    this->mse_loss_layer->backward();
+    delete[] target;
+  } else if(this->loss_function == CROSS_ENTROPY){
+    this->ce_loss_layer->operator()(target_index);
+    this->current_loss += this->ce_loss_layer->get_loss();
+    this->ce_loss_layer->backward();
+  }
+}
+
+// Get the loss value
+double mlp::get_loss(){
+  return this->current_loss;
+}
+
+// Zero the loss value
+void mlp::zero_loss(){
+  this->current_loss = 0.0;
 }
 
 /* BACKPROPAGATION FUNCTIONS */
@@ -152,6 +303,10 @@ void mlp::print_grad_weights(){
   for(int i = 0; i < this->num_layers; i++){
     layers[i]->print_grad_weights();
   }
+}
+
+void mlp::print_loss(){
+  cout << "Loss: " << this->current_loss << endl;
 }
 
 #endif

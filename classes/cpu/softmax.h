@@ -23,6 +23,8 @@ class softmax : public BackwardClass {
     // Getters
     double *values_pointer() override;
     double *grad_pointer() override;
+    int get_prediction();
+    double get_prediction_probability(int index);
     // Methods
     void backward(double *derivatives) override;
     void zero_grad() override;
@@ -74,15 +76,42 @@ double *softmax::grad_pointer(){
   return this->grad;
 }
 
+int softmax::get_prediction(){
+  int max_val_indx = 0;
+  for(int i = 1; i < this->size; i++){
+    if(this->value[i] > this->value[max_val_indx]){
+      max_val_indx = i;
+    }
+  }
+  return max_val_indx;
+}
+
+double softmax::get_prediction_probability(int index){
+  return this->value[index];
+}
+
 /* METHODS */
 // Operator to apply the softmax function
 void softmax::operator()(){
+  // Find max value for numerical stability
+  double max_val = this->value[0];
+  for(int i = 1; i < this->size; i++){
+    if(this->value[i] > max_val){
+      max_val = this->value[i];
+    }
+  }
+  
+  // Compute exp(x - max) and sum for numerical stability
+  // This is mathematically equivalent to the softmax function, but it is more numerically stable.
+  // This is just the softmax function multiplied by e^(-max_val)/e^(-max_val) = 1
   double Z = 0;
   for(int i = 0; i < this->size; i++){
-    Z += exp(this->value[i] / this->temperature);
+    Z += exp((this->value[i] - max_val) / this->temperature);
   }
+  
+  // Normalize
   for(int i = 0; i < this->size; i++){
-    this->value[i] = exp(this->value[i] / this->temperature) / Z;
+    this->value[i] = exp((this->value[i] - max_val) / this->temperature) / Z;
   }
 }
 

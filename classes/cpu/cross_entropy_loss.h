@@ -223,4 +223,3 @@ void cross_entropy_loss::print_grad() {
 }
 
 #endif
-
