@@ -205,12 +205,7 @@ int main(){
     // Print training loss
     std::cout << "Training ";
     network.print_loss();
-    
-    // Evaluate on validation set
-    /*float validation_accuracy = calculate_accuracy(network, dataset, labels, validation_indices);
-    std::cout << "Validation accuracy: " << validation_accuracy << "%" << std::endl;
-    std::cout << "Epoch " << (epoch + 1) << " completed" << std::endl;
-  */}
+  }
 
   // FINAL TESTING PHASE
   std::cout << "\n=== FINAL TESTING ===" << std::endl;

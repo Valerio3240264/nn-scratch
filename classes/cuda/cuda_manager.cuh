@@ -1,5 +1,4 @@
-#ifndef CUDA_MANAGER_H
-#define CUDA_MANAGER_H
+#pragma once
 
 #include <cuda_runtime.h>
 #include <curand.h>
@@ -8,20 +7,63 @@
 #include <stdexcept>
 #include <ctime>
 #include <type_traits>
-#include "enums.h"
+#include "../enums.h"
+#include <random>
+
+using namespace std;
 
 // Forward declaration of CUDA kernels
-__global__ void matrix_vector_multiplication(double *M, double *V, double *R, int output_size, int input_size);
-__global__ void vector_update(double *V, double *U, double learning_rate, int size);
-__global__ void activation_tanh(double *V, int size);
-__global__ void activation_relu(double *V, int size);
+__global__ void I_W_B_multiplication(float *d_w, float *d_input_values, float *d_b, float *d_result, int output_size, int input_size);
+__global__ void vector_update(float *V, float *U, float learning_rate, int size);
+__global__ void backward_W(float *d_w, float *d_input_values, float *d_derivatives, float *d_grad_w, float *prevGrad, int output_size, int input_size);
+__global__ void backward_bias(float *d_b, float *d_derivatives, float *d_grad_b, int output_size);
+/* ACTIVATION FUNCTION KERNELS */
+// Forward pass
+__global__ void activation_tanh(float *V, int size);
+__global__ void activation_relu(float *V, int size);
 
-// CUDA error checking macro - centralized in CudaManager
+// Backward pass
+__global__ void backward_tanh(float *V, float *derivatives, float *grad, int size);
+__global__ void backward_relu(float *V, float *derivatives, float *grad, int size);
+__global__ void backward_linear(float *V, float *derivatives, float *grad, int size);
+
+/* SOFTMAX KERNELS */
+// Forward pass kernels
+__global__ void find_max_kernel(float *d_input, float *d_max, int size);
+__global__ void softmax_exp_sum_kernel(float *d_value, float *d_max_val, float temperature, float *d_exp_sum, int size);
+__global__ void softmax_normalize_kernel(float *d_value, float *d_exp_sum, int size);
+
+// Backward pass kernels
+__global__ void softmax_dot_product_kernel(float *d_value, float *d_derivatives, float *d_dot, int size);
+__global__ void softmax_backward_kernel(float *d_value, float *d_derivatives, float *d_grad, float *d_dot, float temperature, int size);
+
+/* LOSS KERNELS */
+// One-hot encoding kernel
+__global__ void one_hot_encoding_kernel(float *d_target, int target_index, int size);
+
+// Reduction kernel
+__global__ void reduce_sum_kernel(float *d_input, float *d_output, int size);
+
+// MSE loss kernels
+__global__ void mse_loss_kernel(float *d_predictions, float *d_target, float *d_grad, int size);
+__global__ void backward_mse_loss_kernel(float *d_predictions, float *d_target, float *d_derivatives, float *d_grad, int size);
+__global__ void backward_mse_loss_kernel_simple(float *d_predictions, float *d_target, float *d_grad, int size);
+
+// Cross entropy loss kernels
+__global__ void cross_entropy_loss_kernel(float *d_predictions, float *d_target, float *d_grad, int size);
+__global__ void backward_cross_entropy_loss_kernel(float *d_predictions, float *d_target, float *d_derivatives, float *d_grad, int size);
+__global__ void backward_cross_entropy_loss_kernel_simple(float *d_predictions, float *d_target, float *d_grad, int size);
+
+// Forward declarations of utility functions
+void check_cuda_error(cudaError_t error, const char* file, int line);
+void check_cublas_error(cublasStatus_t status, const char* file, int line);
+
+// CUDA error checking macro
 #define CUDA_CHECK_MANAGER(call) \
   do { \
     cudaError_t error = call; \
     if (error != cudaSuccess) { \
-      CudaManager::check_cuda_error(error, __FILE__, __LINE__); \
+      check_cuda_error(error, __FILE__, __LINE__); \
     } \
   } while(0)
 
@@ -30,81 +72,96 @@ __global__ void activation_relu(double *V, int size);
   do { \
     cublasStatus_t status = call; \
     if (status != CUBLAS_STATUS_SUCCESS) { \
-      CudaManager::check_cublas_error(status, __FILE__, __LINE__); \
+      check_cublas_error(status, __FILE__, __LINE__); \
     } \
   } while(0)
 
-class CudaManager {
-private:
-  static bool cuda_available_checked;
-  static bool cuda_available;
-  static cublasHandle_t cublas_handle;
-  static bool cublas_initialized;
-    
-public:
-  // Device Management
-  static bool is_cuda_available();
-  
-  // Memory Management  
-  template<typename T>
-  static void allocate_device_memory(T** device_ptr, size_t count);
+// File-scope inline variables (shared across translation units)
+inline bool cuda_available_checked = false;
+inline bool cuda_available = false;
+inline cublasHandle_t cublas_handle;
+inline bool cublas_initialized = false;
 
-  template<typename T>
-  static void allocate_device_memory_zeros(T** device_ptr, size_t count);
+// Function declarations
+// Device Management
+bool is_cuda_available();
 
-  template<typename T>
-  static void allocate_device_memory_random(T** device_ptr, size_t count);
+// Memory Management  
+template<typename T>
+void allocate_device_memory(T** device_ptr, size_t count);
+template<typename T>
+void allocate_device_memory_zeros(T** device_ptr, size_t count);
+template<typename T>
+void allocate_device_memory_random(T** device_ptr, size_t count);
+template<typename T>
+void zero_device_memory(T* device_ptr, size_t count);
+void free_device_memory(void* device_ptr);
 
-  template<typename T>
-  static void zero_device_memory(T* device_ptr, size_t count);
+// Memory Transfers
+template<typename T>
+void copy_host_to_device(T* device_ptr, const T* host_ptr, size_t count);
+template<typename T>
+void copy_device_to_host(T* host_ptr, const T* device_ptr, size_t count);
+template<typename T>
+void copy_device_to_device(T* device_ptr, const T* device_ptr2, size_t count);
 
-  static void free_device_memory(void* device_ptr);
-  
-  // Memory Transfers
-  template<typename T>
-  static void copy_host_to_device(T* device_ptr, const T* host_ptr, size_t count);
-  
-  template<typename T>
-  static void copy_device_to_host(T* host_ptr, const T* device_ptr, size_t count);
-  
-  // Kernel Launch Utilities
-  static void launch_matrix_vector_multiply(double* d_matrix, double* d_vector, double* d_result, int output_size, int input_size);
-    // TODO:
-  static void launch_update(double* d_vector, double* d_update, double learning_rate, int size);
-  static void launch_activation_function(double* d_value, Activation_name function_name, int size);
+/* KERNEL LAUNCH UTILITIES */
+// Weights kernels
+void launch_I_W_B_multiplication(float* d_matrix, float* d_vector, float* d_bias, float* d_result, int output_size, int input_size);
+void launch_update(float* d_vector, float* d_update, float learning_rate, int size);
+void launch_backward_W(float* d_w, float* d_input_values, float* d_derivatives, float* d_grad_w, float* prevGrad, int output_size, int input_size);
+void launch_backward_bias(float* d_b, float* d_derivatives, float* d_grad_b, int output_size);
 
-  // CuBLAS Operations
-  static void init_cublas();
-  static void destroy_cublas();
-  static void launch_gemm(double* d_A, double* d_B, double* d_C, 
-                         int m, int n, int k,
-                         bool transpose_A = false, bool transpose_B = false,
-                         double alpha = 1.0, double beta = 0.0);
+// Activation function kernel
+void launch_activation_tanh(float* d_value, int size);
+void launch_activation_relu(float* d_value, int size);
+void launch_backward_tanh(float* d_value, float* d_derivatives, float* d_grad, int size);
+void launch_backward_relu(float* d_value, float* d_derivatives, float* d_grad, int size);
+void launch_backward_linear(float* d_value, float* d_derivatives, float* d_grad, int size);
 
-  // Error Checking
-  static void check_cuda_error(cudaError_t error, const char* file, int line);
-  static void check_cublas_error(cublasStatus_t status, const char* file, int line);
-  
-  // Synchronization
-  static void synchronize();
-};
+// Softmax kernels
+void launch_softmax_forward(float* d_value, float temperature, int size, float* d_max, float* d_exp_sum);
+void launch_softmax_backward(float* d_value, float* d_derivatives, float* d_grad, float temperature, int size, float* d_dot);
 
-// Static member initialization
-bool CudaManager::cuda_available_checked = false;
-bool CudaManager::cuda_available = false;
-cublasHandle_t CudaManager::cublas_handle;
-bool CudaManager::cublas_initialized = false;
+// One-hot encoding kernel
+void launch_one_hot_encoding(float* d_target, int target_index, int size);
+
+// Reduction kernel
+void launch_reduce_sum(float* d_input, float* d_output, int size);
+
+// MSE loss kernels
+void launch_mse_loss_kernel(float* d_predictions, float* d_target, float* d_grad, int size);
+void launch_backward_mse_loss_kernel(float* d_predictions, float* d_target, float* d_derivatives, float* d_grad, int size);
+void launch_backward_mse_loss_kernel_simple(float* d_predictions, float* d_target, float* d_grad, int size);
+
+// Cross entropy loss kernels
+void launch_cross_entropy_loss_kernel(float* d_predictions, float* d_target, float* d_grad, int size);
+void launch_backward_cross_entropy_loss_kernel(float* d_predictions, float* d_target, float* d_derivatives, float* d_grad, int size);
+void launch_backward_cross_entropy_loss_kernel_simple(float* d_predictions, float* d_target, float* d_grad, int size);
+
+// CuBLAS Operations
+void init_cublas();
+void destroy_cublas();
+void launch_gemm(float* d_A, float* d_B, float* d_C, 
+               int m, int n, int k,
+               bool transpose_A = false, bool transpose_B = false,
+               float alpha = 1.0f, float beta = 0.0f);
+
+// Error Checking
+void check_cuda_error(cudaError_t error, const char* file, int line);
+void check_cublas_error(cublasStatus_t status, const char* file, int line);
+
+// Synchronization
+void synchronize();
 
 /* DEVICE MANAGEMENT */
-// Implementation of static methods
-
-bool CudaManager::is_cuda_available() {
+// Function implementations
+inline bool is_cuda_available() {
   if (!cuda_available_checked) {
     int device_count = 0;
     cudaError_t error = cudaGetDeviceCount(&device_count);
     cuda_available = (error == cudaSuccess && device_count > 0);
     cuda_available_checked = true;
-    
     if (cuda_available) {
       printf("CUDA detected: %d device(s) available\n", device_count);
     } else {
@@ -115,19 +172,22 @@ bool CudaManager::is_cuda_available() {
 }
 
 /* MEMORY MANAGEMENT */
+// Allocate device memory
 template<typename T>
-void CudaManager::allocate_device_memory(T** device_ptr, size_t count) {
+void allocate_device_memory(T** device_ptr, size_t count) {
   CUDA_CHECK_MANAGER(cudaMalloc(device_ptr, count * sizeof(T)));
 }
 
+// Allocate device memory and set to zero
 template<typename T>
-void CudaManager::allocate_device_memory_zeros(T** device_ptr, size_t count) {
+void allocate_device_memory_zeros(T** device_ptr, size_t count) {
   CUDA_CHECK_MANAGER(cudaMalloc(device_ptr, count * sizeof(T)));
   CUDA_CHECK_MANAGER(cudaMemset(*device_ptr, 0, count * sizeof(T)));
 }
 
+// Allocate device memory and set to random values [0, 1]
 template<typename T>
-void CudaManager::allocate_device_memory_random(T** device_ptr, size_t count) {
+void allocate_device_memory_random(T** device_ptr, size_t count) {
   CUDA_CHECK_MANAGER(cudaMalloc(device_ptr, count * sizeof(T)));
   
   curandGenerator_t generator;
@@ -146,29 +206,62 @@ void CudaManager::allocate_device_memory_random(T** device_ptr, size_t count) {
   curandDestroyGenerator(generator);
 }
 
+// Allocate device memory with Xavier/Glorot initialization
+// Weights are initialized uniformly in [-scale, scale] where scale = sqrt(1 / input_size)
 template<typename T>
-void CudaManager::zero_device_memory(T* device_ptr, size_t count) {
+void allocate_device_memory_xavier(T** device_ptr, size_t count, size_t input_size) {
+  CUDA_CHECK_MANAGER(cudaMalloc(device_ptr, count * sizeof(T)));
+
+  float scale = sqrtf(1.0f / input_size);
+  
+  // Random number generator
+  default_random_engine generator;
+  uniform_real_distribution<float> distribution(-scale, scale);
+
+  float *temp = new float[count];
+  for (int i = 0; i < count; i++){
+    temp[i] = distribution(generator);
+  }
+
+  copy_host_to_device(*device_ptr, temp, count);
+  delete[] temp;
+}
+
+// Set device memory to zero
+template<typename T>
+void zero_device_memory(T* device_ptr, size_t count) {
   CUDA_CHECK_MANAGER(cudaMemset(device_ptr, 0, count * sizeof(T)));
 }
 
-void CudaManager::free_device_memory(void* device_ptr) {
+// Free device memory
+inline void free_device_memory(void* device_ptr) {
   if (device_ptr) {
     CUDA_CHECK_MANAGER(cudaFree(device_ptr));
   }
 }
 
+// Copy host memory to device memory
 template<typename T>
-void CudaManager::copy_host_to_device(T* device_ptr, const T* host_ptr, size_t count) {
+void copy_host_to_device(T* device_ptr, const T* host_ptr, size_t count) {
   CUDA_CHECK_MANAGER(cudaMemcpy(device_ptr, host_ptr, count * sizeof(T), cudaMemcpyHostToDevice));
 }
 
+// Copy device memory to host memory
 template<typename T>
-void CudaManager::copy_device_to_host(T* host_ptr, const T* device_ptr, size_t count) {
+void copy_device_to_host(T* host_ptr, const T* device_ptr, size_t count) {
   CUDA_CHECK_MANAGER(cudaMemcpy(host_ptr, device_ptr, count * sizeof(T), cudaMemcpyDeviceToHost));
 }
 
+// Copy device memory to device memory
+template<typename T>
+void copy_device_to_device(T* device_ptr, const T* device_ptr2, size_t count) {
+  CUDA_CHECK_MANAGER(cudaMemcpy(device_ptr, device_ptr2, count * sizeof(T), cudaMemcpyDeviceToDevice));
+}
+
 /* KERNEL LAUNCH UTILITIES */
-void CudaManager::launch_matrix_vector_multiply(double* d_matrix, double* d_vector, double* d_result, int output_size, int input_size) {
+/* WEIGHTS KERNELS */
+// Launch I_W_B_multiplication kernel
+inline void launch_I_W_B_multiplication(float* d_w, float* d_input_values, float* d_b, float* d_result, int output_size, int input_size) {
   // Optimal threading configuration for the new kernel
   const int THREADS_PER_BLOCK = 256;  // Balanced for good occupancy
   int num_blocks = (output_size + THREADS_PER_BLOCK - 1) / THREADS_PER_BLOCK;  // Ceiling division
@@ -176,15 +269,15 @@ void CudaManager::launch_matrix_vector_multiply(double* d_matrix, double* d_vect
   dim3 grid(num_blocks);
   dim3 block(THREADS_PER_BLOCK);
   
-  matrix_vector_multiplication<<<grid, block>>>(d_matrix, d_vector, d_result, output_size, input_size);
+  I_W_B_multiplication<<<grid, block>>>(d_w, d_input_values, d_b, d_result, output_size, input_size);
   
   CUDA_CHECK_MANAGER(cudaGetLastError());
 }
 
-void CudaManager::launch_update(double* d_vector, double* d_update, double learning_rate, int size) {
+// Launch update kernel
+inline void launch_update(float* d_vector, float* d_update, float learning_rate, int size) {
   const int THREADS_PER_BLOCK = 256;
-  int num_threads = (size + 1) / 2;
-  int num_blocks = (num_threads + THREADS_PER_BLOCK - 1) / THREADS_PER_BLOCK;
+  int num_blocks = (size + THREADS_PER_BLOCK - 1) / THREADS_PER_BLOCK;
   
   dim3 grid(num_blocks);
   dim3 block(THREADS_PER_BLOCK);
@@ -194,71 +287,299 @@ void CudaManager::launch_update(double* d_vector, double* d_update, double learn
   CUDA_CHECK_MANAGER(cudaGetLastError());
 }
 
-void CudaManager::launch_activation_function(double* d_value, Activation_name function_name, int size) {
+// Launch backward_W kernel
+inline void launch_backward_W(float* d_w, float* d_input_values, float* d_derivatives, float* d_grad_w, float* prevGrad, int output_size, int input_size) {
+  // Desired total threads per block (user-specified).
+  const int THREADS_PER_BLOCK = 256;
+  // Choose blockDim.x (threads per block in x) reasonably:
+  // prefer a small, cache-friendly x dimension; clamp to input_size.
+  int blockX = 16;                          // chosen default
+  if (blockX > input_size) blockX = input_size;
+  // Ensure blockX is not larger than THREADS_PER_BLOCK
+  if (blockX > THREADS_PER_BLOCK) blockX = THREADS_PER_BLOCK;
+  // Compute blockY so that blockX * blockY <= THREADS_PER_BLOCK
+  int blockY = THREADS_PER_BLOCK / blockX;
+  if (blockY < 1) blockY = 1;
+  // Clamp blockY to output_size (no point having more threads than rows per block)
+  if (blockY > output_size) blockY = output_size;
+  // Final safety: ensure product <= device limit (commonly 1024).
+  // If your device has a different max threads per block, adjust accordingly.
+  const int DEVICE_MAX_THREADS_PER_BLOCK = 1024;
+  if (blockX * blockY > DEVICE_MAX_THREADS_PER_BLOCK) {
+    // reduce blockY to fit
+    blockY = DEVICE_MAX_THREADS_PER_BLOCK / blockX;
+    if (blockY < 1) blockY = 1;
+  }
+
+  // Compute grid sizes to cover all columns (input_size) and rows (output_size)
+  int gridX = (input_size  + blockX - 1) / blockX;
+  int gridY = (output_size + blockY - 1) / blockY;
+
+  dim3 block(blockX, blockY);
+  dim3 grid(gridX, gridY);
+  
+  backward_W<<<grid, block>>>(d_w, d_input_values, d_derivatives, d_grad_w, prevGrad, output_size, input_size);
+  CUDA_CHECK_MANAGER(cudaGetLastError());
+  
+}
+
+// Launch bias_backward kernel
+inline void launch_backward_bias(float* d_b, float* d_derivatives, float* d_grad_b, int output_size) {
+  const int THREADS_PER_BLOCK = 256;
+  int num_blocks = (output_size + THREADS_PER_BLOCK - 1) / THREADS_PER_BLOCK;
+  
+  dim3 grid(num_blocks);
+  dim3 block(THREADS_PER_BLOCK);
+  
+  backward_bias<<<grid, block>>>(d_b, d_derivatives, d_grad_b, output_size);
+  CUDA_CHECK_MANAGER(cudaGetLastError());
+  
+}
+
+/* ACTIVATION FUNCTION KERNELS */
+// Launch activation_tanh kernel
+inline void launch_activation_tanh(float* d_value, int size) {
   const int THREADS_PER_BLOCK = 256;
   int num_blocks = (size + THREADS_PER_BLOCK - 1) / THREADS_PER_BLOCK;
   
   dim3 grid(num_blocks);
   dim3 block(THREADS_PER_BLOCK);
   
-  switch(function_name) {
-    case TANH:
-      activation_tanh<<<grid, block>>>(d_value, size);
-      CUDA_CHECK_MANAGER(cudaGetLastError());
-      break;
-      
-    case RELU:
-      activation_relu<<<grid, block>>>(d_value, size);
-      CUDA_CHECK_MANAGER(cudaGetLastError());
-      break;
-      
-    case LINEAR:
-      break;
-      
-    default:
-      throw std::runtime_error("Invalid activation function");
-  }
+  activation_tanh<<<grid, block>>>(d_value, size);
+  CUDA_CHECK_MANAGER(cudaGetLastError());
+}
+
+// Launch activation_relu kernel
+inline void launch_activation_relu(float* d_value, int size) {
+  const int THREADS_PER_BLOCK = 256;
+  int num_blocks = (size + THREADS_PER_BLOCK - 1) / THREADS_PER_BLOCK;
+  
+  dim3 grid(num_blocks);
+  dim3 block(THREADS_PER_BLOCK);
+  
+  activation_relu<<<grid, block>>>(d_value, size);
+  CUDA_CHECK_MANAGER(cudaGetLastError());
+}
+
+// Launch backward_tanh kernel
+inline void launch_backward_tanh(float* d_value, float* d_derivatives, float* d_grad, int size) {
+  const int THREADS_PER_BLOCK = 256;
+  int num_blocks = (size + THREADS_PER_BLOCK - 1) / THREADS_PER_BLOCK;
+  
+  dim3 grid(num_blocks);
+  dim3 block(THREADS_PER_BLOCK);
+  
+  backward_tanh<<<grid, block>>>(d_value, d_derivatives, d_grad, size);
+  CUDA_CHECK_MANAGER(cudaGetLastError());
+  
+}
+
+// Launch backward_relu kernel
+inline void launch_backward_relu(float* d_value, float* d_derivatives, float* d_grad, int size) {
+  const int THREADS_PER_BLOCK = 256;
+  int num_blocks = (size + THREADS_PER_BLOCK - 1) / THREADS_PER_BLOCK;
+  
+  dim3 grid(num_blocks);
+  dim3 block(THREADS_PER_BLOCK);
+  
+  backward_relu<<<grid, block>>>(d_value, d_derivatives, d_grad, size);
+  CUDA_CHECK_MANAGER(cudaGetLastError());
+  
+}
+
+// Launch backward_linear kernel
+inline void launch_backward_linear(float* d_value, float* d_derivatives, float* d_grad, int size) {
+  const int THREADS_PER_BLOCK = 256;
+  int num_blocks = (size + THREADS_PER_BLOCK - 1) / THREADS_PER_BLOCK;
+  
+  dim3 grid(num_blocks);
+  dim3 block(THREADS_PER_BLOCK);
+  
+  backward_linear<<<grid, block>>>(d_value, d_derivatives, d_grad, size);
+  CUDA_CHECK_MANAGER(cudaGetLastError());
+  
+}
+
+/* SOFTMAX KERNELS */
+// Launch softmax forward pass
+inline void launch_softmax_forward(float* d_value, float temperature, int size, float* d_max, float* d_exp_sum) {
+  const int THREADS_PER_BLOCK = 256;
+  int num_blocks = (size + THREADS_PER_BLOCK - 1) / THREADS_PER_BLOCK;
+  
+  // Initialize d_max to negative infinity and d_exp_sum to zero
+  float neg_inf = -INFINITY;
+  copy_host_to_device(d_max, &neg_inf, 1);
+  zero_device_memory(d_exp_sum, 1);
+  
+  // Step 1: Find max value
+  find_max_kernel<<<num_blocks, THREADS_PER_BLOCK>>>(d_value, d_max, size);
+  CUDA_CHECK_MANAGER(cudaGetLastError());
+  CUDA_CHECK_MANAGER(cudaDeviceSynchronize());  // Ensure max is computed before use
+  
+  // Step 2: Compute exp and sum (pass device pointer directly - NO HOST COPY!)
+  softmax_exp_sum_kernel<<<num_blocks, THREADS_PER_BLOCK>>>(d_value, d_max, temperature, d_exp_sum, size);
+  CUDA_CHECK_MANAGER(cudaGetLastError());
+  CUDA_CHECK_MANAGER(cudaDeviceSynchronize());  // Ensure sum is computed before use
+  
+  // Step 3: Normalize (pass device pointer directly - NO HOST COPY!)
+  softmax_normalize_kernel<<<num_blocks, THREADS_PER_BLOCK>>>(d_value, d_exp_sum, size);
+  CUDA_CHECK_MANAGER(cudaGetLastError());
+}
+
+// Launch softmax backward pass
+inline void launch_softmax_backward(float* d_value, float* d_derivatives, float* d_grad, float temperature, int size, float* d_dot) {
+  const int THREADS_PER_BLOCK = 256;
+  int num_blocks = (size + THREADS_PER_BLOCK - 1) / THREADS_PER_BLOCK;
+  
+  // Zero the dot product buffer
+  zero_device_memory(d_dot, 1);
+  
+  // Step 1: Compute dot product
+  softmax_dot_product_kernel<<<num_blocks, THREADS_PER_BLOCK>>>(d_value, d_derivatives, d_dot, size);
+  CUDA_CHECK_MANAGER(cudaGetLastError());
+  CUDA_CHECK_MANAGER(cudaDeviceSynchronize());  // Ensure dot product is computed before use
+  
+  // Step 2: Compute gradient (pass device pointer directly - NO HOST COPY!)
+  softmax_backward_kernel<<<num_blocks, THREADS_PER_BLOCK>>>(d_value, d_derivatives, d_grad, d_dot, temperature, size);
+  CUDA_CHECK_MANAGER(cudaGetLastError());
+  
+}
+
+/* LOSS KERNELS */
+/* ONE-HOT ENCODING KERNEL */
+// Launch one-hot encoding kernel - writes directly to device memory
+inline void launch_one_hot_encoding(float* d_target, int target_index, int size) {
+  const int THREADS_PER_BLOCK = 256;
+  int num_blocks = (size + THREADS_PER_BLOCK - 1) / THREADS_PER_BLOCK;
+  
+  dim3 grid(num_blocks);
+  dim3 block(THREADS_PER_BLOCK);
+  
+  one_hot_encoding_kernel<<<grid, block>>>(d_target, target_index, size);
+  CUDA_CHECK_MANAGER(cudaGetLastError());
+}
+
+/* REDUCTION KERNEL */
+// Launch reduction kernel to sum array elements
+inline void launch_reduce_sum(float* d_input, float* d_output, int size) {
+  const int THREADS_PER_BLOCK = 256;
+  int num_blocks = (size + THREADS_PER_BLOCK - 1) / THREADS_PER_BLOCK;
+  
+  dim3 grid(num_blocks);
+  dim3 block(THREADS_PER_BLOCK);
+  
+  reduce_sum_kernel<<<grid, block>>>(d_input, d_output, size);
+  CUDA_CHECK_MANAGER(cudaGetLastError());
+}
+
+/* MSE LOSS KERNELS */
+// Launch MSE loss kernel
+inline void launch_mse_loss_kernel(float* d_predictions, float* d_target, float* d_grad, int size) {
+  const int THREADS_PER_BLOCK = 256;
+  int num_blocks = (size + THREADS_PER_BLOCK - 1) / THREADS_PER_BLOCK;
+  
+  dim3 grid(num_blocks);
+  dim3 block(THREADS_PER_BLOCK);
+  
+  mse_loss_kernel<<<grid, block>>>(d_predictions, d_target, d_grad, size);
+  CUDA_CHECK_MANAGER(cudaGetLastError());
+}
+
+// Launch backward MSE loss kernel
+inline void launch_backward_mse_loss_kernel(float* d_predictions, float* d_target, float* d_derivatives, float* d_grad, int size) {
+  const int THREADS_PER_BLOCK = 256;
+  int num_blocks = (size + THREADS_PER_BLOCK - 1) / THREADS_PER_BLOCK;
+  
+  dim3 grid(num_blocks);
+  dim3 block(THREADS_PER_BLOCK);
+  
+  backward_mse_loss_kernel<<<grid, block>>>(d_predictions, d_target, d_derivatives, d_grad, size);
+  CUDA_CHECK_MANAGER(cudaGetLastError());
+  
+}
+
+// Launch backward MSE loss kernel (simplified version with derivatives = 1.0)
+inline void launch_backward_mse_loss_kernel_simple(float* d_predictions, float* d_target, float* d_grad, int size) {
+  const int THREADS_PER_BLOCK = 256;
+  int num_blocks = (size + THREADS_PER_BLOCK - 1) / THREADS_PER_BLOCK;
+  
+  dim3 grid(num_blocks);
+  dim3 block(THREADS_PER_BLOCK);
+  
+  backward_mse_loss_kernel_simple<<<grid, block>>>(d_predictions, d_target, d_grad, size);
+  CUDA_CHECK_MANAGER(cudaGetLastError());
+  
+}
+
+/* CROSS ENTROPY LOSS KERNELS */
+// Launch cross entropy loss kernel
+inline void launch_cross_entropy_loss_kernel(float* d_predictions, float* d_target, float* d_grad, int size) {
+  const int THREADS_PER_BLOCK = 256;
+  int num_blocks = (size + THREADS_PER_BLOCK - 1) / THREADS_PER_BLOCK;
+  
+  dim3 grid(num_blocks);
+  dim3 block(THREADS_PER_BLOCK);
+  
+  cross_entropy_loss_kernel<<<grid, block>>>(d_predictions, d_target, d_grad, size);
+  CUDA_CHECK_MANAGER(cudaGetLastError());
+}
+
+// Launch backward cross entropy loss kernel
+inline void launch_backward_cross_entropy_loss_kernel(float* d_predictions, float* d_target, float* d_derivatives, float* d_grad, int size) {
+  const int THREADS_PER_BLOCK = 256;
+  int num_blocks = (size + THREADS_PER_BLOCK - 1) / THREADS_PER_BLOCK;
+  
+  dim3 grid(num_blocks);
+  dim3 block(THREADS_PER_BLOCK);
+  
+  backward_cross_entropy_loss_kernel<<<grid, block>>>(d_predictions, d_target, d_derivatives, d_grad, size);
+  CUDA_CHECK_MANAGER(cudaGetLastError());
+  
+}
+
+// Launch backward cross entropy loss kernel (simplified version with derivatives = 1.0)
+inline void launch_backward_cross_entropy_loss_kernel_simple(float* d_predictions, float* d_target, float* d_grad, int size) {
+  const int THREADS_PER_BLOCK = 256;
+  int num_blocks = (size + THREADS_PER_BLOCK - 1) / THREADS_PER_BLOCK;
+  
+  dim3 grid(num_blocks);
+  dim3 block(THREADS_PER_BLOCK);
+  
+  backward_cross_entropy_loss_kernel_simple<<<grid, block>>>(d_predictions, d_target, d_grad, size);
+  CUDA_CHECK_MANAGER(cudaGetLastError());
 }
 
 /* CUBLAS OPERATIONS */
-void CudaManager::init_cublas() {
+// Initialize cuBLAS
+inline void init_cublas() {
   if (!cublas_initialized) {
     CUBLAS_CHECK_MANAGER(cublasCreate(&cublas_handle));
     cublas_initialized = true;
   }
 }
 
-void CudaManager::destroy_cublas() {
+// Destroy cuBLAS
+inline void destroy_cublas() {
   if (cublas_initialized) {
     CUBLAS_CHECK_MANAGER(cublasDestroy(cublas_handle));
     cublas_initialized = false;
   }
 }
 
-void CudaManager::launch_gemm(double* d_A, double* d_B, double* d_C,
-                              int m, int n, int k,
-                              bool transpose_A, bool transpose_B,
-                              double alpha, double beta) {
-  // Initialize cuBLAS if not already initialized
-  if (!cublas_initialized) {
-    init_cublas();
-  }
-  
-  // cuBLAS uses column-major ordering, so we need to be careful about the operation
-  // C = alpha * op(A) * op(B) + beta * C
-  // where op(X) = X or X^T depending on the transpose flags
-  
+// Launch gemm kernel
+inline void launch_gemm(float* d_A, float* d_B, float* d_C,
+                        int m, int n, int k,
+                        bool transpose_A, bool transpose_B,
+                        float alpha, float beta) {  
   cublasOperation_t trans_A = transpose_A ? CUBLAS_OP_T : CUBLAS_OP_N;
   cublasOperation_t trans_B = transpose_B ? CUBLAS_OP_T : CUBLAS_OP_N;
   
-  // Leading dimensions
   int lda = transpose_A ? k : m;
   int ldb = transpose_B ? n : k;
   int ldc = m;
   
-  // Call cuBLAS DGEMM (double precision general matrix multiply)
   CUBLAS_CHECK_MANAGER(
-    cublasDgemm(cublas_handle,
+    cublasSgemm(cublas_handle,
                 trans_A, trans_B,
                 m, n, k,
                 &alpha,
@@ -270,14 +591,16 @@ void CudaManager::launch_gemm(double* d_A, double* d_B, double* d_C,
 }
 
 /* ERROR CHECKING */
-void CudaManager::check_cuda_error(cudaError_t error, const char* file, int line) {
+// Check CUDA error
+inline void check_cuda_error(cudaError_t error, const char* file, int line) {
   if (error != cudaSuccess) {
     fprintf(stderr, "CUDA error at %s:%d: %s\n", file, line, cudaGetErrorString(error));
     throw std::runtime_error("CUDA operation failed");
   }
 }
 
-void CudaManager::check_cublas_error(cublasStatus_t status, const char* file, int line) {
+// Check cuBLAS error
+inline void check_cublas_error(cublasStatus_t status, const char* file, int line) {
   if (status != CUBLAS_STATUS_SUCCESS) {
     const char* error_string;
     switch(status) {
@@ -317,8 +640,7 @@ void CudaManager::check_cublas_error(cublasStatus_t status, const char* file, in
   }
 }
 
-void CudaManager::synchronize() {
+// Synchronize device
+inline void synchronize() {
   CUDA_CHECK_MANAGER(cudaDeviceSynchronize());
 }
-
-#endif

@@ -7,6 +7,12 @@
 #include "cpu/softmax.h"
 #include "cpu/mse_loss.h"
 #include "cpu/cross_entropy_loss.h"
+#ifdef __CUDACC__
+#include "cuda/cuda_input.cuh"
+#include "cuda/cuda_softmax.cuh"
+#include "cuda/cuda_mse_loss.cuh"
+#include "cuda/cuda_cross_entropy_loss.cuh"
+#endif
 #include "enums.h"
 
 /*TODO
@@ -56,25 +62,29 @@ using namespace std;
 
 class mlp{
   private:
+    // Layers
     layer **layers;
     int num_layers;
     int input_size;
     int output_size;
     Activation_name *activation_functions;
-    Loss_name loss_function;
+    // Softmax
     bool has_softmax;
-    softmax *softmax_layer;
-    mse_loss *mse_loss_layer;
-    cross_entropy_loss *ce_loss_layer;
+    SoftmaxClass *softmax_layer;
+    // Loss function
+    Loss_name loss_function;
+    LossClass *loss_layer;
     float current_loss;
+
+    void cuda_init(int *hidden_sizes);
+    void cpu_init(int *hidden_sizes);
 
   public:
     // Constructor with activation functions per layer and loss function
-    mlp(int input_size, int output_size, int num_layers, int *hidden_sizes, 
-        Activation_name *activation_functions, Loss_name loss_function, bool use_softmax = false);
+    mlp(int input_size, int output_size, int num_layers, int *hidden_sizes, Activation_name *activation_functions, Loss_name loss_function, bool use_softmax = false, bool use_cuda = false);
     
     // Simple constructor (all layers use same activation)
-    mlp(int input_size, int output_size, int num_layers, int *hidden_sizes, Activation_name activation_function);
+    mlp(int input_size, int output_size, int num_layers, int *hidden_sizes, Activation_name activation_function, bool use_cuda = false);
     
     ~mlp();
 
@@ -97,11 +107,93 @@ class mlp{
     void print_weights();
     void print_grad_weights();
     void print_loss();
+    void print_last_layer_weights();
+    void print_last_layer_grad_weights();
+    void print_loss_gradients();
 };
+
+/* INITIALIZATION FUNCTIONS */
+void mlp::cuda_init(int *hidden_sizes){
+#ifdef __CUDACC__
+  // Create layers (layer class handles CUDA internally)
+  if(this->num_layers > 1){
+    this->layers[0] = new layer(this->input_size, hidden_sizes[0], this->activation_functions[0], true);
+    for(int i = 1; i < this->num_layers - 1; i++){
+      this->layers[i] = new layer(hidden_sizes[i-1], hidden_sizes[i], this->activation_functions[i], true);
+    }
+    this->layers[this->num_layers - 1] = new layer(hidden_sizes[this->num_layers - 2], this->output_size, this->activation_functions[this->num_layers - 1], true);
+  }
+  else if(this->num_layers == 1){
+    this->layers[0] = new layer(this->input_size, this->output_size, this->activation_functions[0], true);
+  }
+  else{
+    cout<<"Error: num_layers must be greater than 0"<<endl;
+    exit(1);
+  }
+  
+  // Create softmax layer if needed
+  if(this->has_softmax){
+    BackwardClass *last_layer_act = this->layers[this->num_layers - 1]->get_output();
+    this->softmax_layer = new cuda_softmax(this->output_size, last_layer_act);
+  } else {
+    this->softmax_layer = nullptr;
+  }
+  
+  // Determine loss predecessor (softmax or last layer)
+  BackwardClass *loss_predecessor = this->has_softmax ? 
+    (BackwardClass*)this->softmax_layer : 
+    (BackwardClass*)this->layers[this->num_layers - 1]->get_output();
+  
+  // Create loss layer
+  if(this->loss_function == MSE){
+    this->loss_layer = new cuda_mse_loss(loss_predecessor, this->output_size);
+  } else {
+    this->loss_layer = new cuda_cross_entropy_loss(loss_predecessor, this->output_size);
+  }
+#else
+  cout<<"Error: CUDA not available. Compile with nvcc."<<endl;
+  exit(1);
+#endif
+}
+
+void mlp::cpu_init(int *hidden_sizes){
+  // Create layers
+  if(this->num_layers > 1){
+    this->layers[0] = new layer(this->input_size, hidden_sizes[0], this->activation_functions[0], false);
+    for(int i = 1; i < this->num_layers - 1; i++){
+      this->layers[i] = new layer(hidden_sizes[i-1], hidden_sizes[i], this->activation_functions[i], false);
+    }
+    this->layers[this->num_layers - 1] = new layer(hidden_sizes[this->num_layers - 2], this->output_size, this->activation_functions[this->num_layers - 1], false);
+  }
+  else if(this->num_layers == 1){
+    this->layers[0] = new layer(this->input_size, this->output_size, this->activation_functions[0], false);
+  }
+  else{
+    cout<<"Error: num_layers must be greater than 0"<<endl;
+    exit(1);
+  }
+  
+  if(this->has_softmax){
+    BackwardClass *last_layer_act = this->layers[this->num_layers - 1]->get_output();
+    this->softmax_layer = new softmax(this->output_size, last_layer_act);
+  } else {
+    this->softmax_layer = nullptr;
+  }
+  
+  BackwardClass *loss_predecessor = this->has_softmax ? 
+    (BackwardClass*)this->softmax_layer : 
+    (BackwardClass*)this->layers[this->num_layers - 1]->get_output();
+  
+  if(this->loss_function == MSE){
+    this->loss_layer = new mse_loss(loss_predecessor, this->output_size);
+  } else {
+    this->loss_layer = new cross_entropy_loss(loss_predecessor, this->output_size);
+  }
+}
 
 /* CONSTRUCTOR AND DESTRUCTOR */
 mlp::mlp(int input_size, int output_size, int num_layers, int *hidden_sizes, 
-         Activation_name *activation_functions, Loss_name loss_function, bool use_softmax){
+         Activation_name *activation_functions, Loss_name loss_function, bool use_softmax, bool use_cuda){
   this->input_size = input_size;
   this->output_size = output_size;
   this->num_layers = num_layers;
@@ -112,46 +204,19 @@ mlp::mlp(int input_size, int output_size, int num_layers, int *hidden_sizes,
   this->loss_function = loss_function;
   this->has_softmax = use_softmax;
   this->current_loss = 0.0f;
-  this->layers = new layer*[num_layers]; 
+  this->layers = new layer*[num_layers];
 
-  // Create layers
-  if(num_layers > 1){
-    this->layers[0] = new layer(input_size, hidden_sizes[0], activation_functions[0]);
-    for(int i = 1; i < num_layers - 1; i++){
-      this->layers[i] = new layer(hidden_sizes[i-1], hidden_sizes[i], activation_functions[i]);
-    }
-    this->layers[num_layers - 1] = new layer(hidden_sizes[num_layers - 2], output_size, activation_functions[num_layers - 1]);
-  }
-  else if(num_layers == 1){
-    this->layers[0] = new layer(input_size, output_size, activation_functions[0]);
+
+  if(use_cuda){
+    this->cuda_init(hidden_sizes);
   }
   else{
-    cout<<"Error: num_layers must be greater than 0"<<endl;
-    exit(1);
-  }
-  
-  if(use_softmax){
-    BackwardClass *last_layer_act = layers[num_layers - 1]->get_output();
-    this->softmax_layer = new softmax(output_size, last_layer_act);
-  } else {
-    this->softmax_layer = nullptr;
-  }
-  
-  BackwardClass *loss_predecessor = use_softmax ? 
-    (BackwardClass*)this->softmax_layer : 
-    (BackwardClass*)layers[num_layers - 1]->get_output();
-  
-  if(loss_function == MSE){
-    this->mse_loss_layer = new mse_loss(loss_predecessor, output_size);
-    this->ce_loss_layer = nullptr;
-  } else {
-    this->ce_loss_layer = new cross_entropy_loss(loss_predecessor, output_size);
-    this->mse_loss_layer = nullptr;
+    this->cpu_init(hidden_sizes);
   }
 }
 
 // Legacy constructor (all layers use same activation)
-mlp::mlp(int input_size, int output_size, int num_layers, int *hidden_sizes, Activation_name function_name){
+mlp::mlp(int input_size, int output_size, int num_layers, int *hidden_sizes, Activation_name function_name, bool use_cuda){
   this->input_size = input_size;
   this->output_size = output_size;
   this->num_layers = num_layers;
@@ -161,33 +226,20 @@ mlp::mlp(int input_size, int output_size, int num_layers, int *hidden_sizes, Act
   }
   this->loss_function = MSE;
   this->has_softmax = false;
+  this->softmax_layer = nullptr;
   this->current_loss = 0.0f;
   this->layers = new layer*[num_layers]; 
 
-  if(num_layers > 1){
-    this->layers[0] = new layer(input_size, hidden_sizes[0], function_name);
-    for(int i = 1; i < num_layers - 1; i++){
-      this->layers[i] = new layer(hidden_sizes[i-1], hidden_sizes[i], function_name);
-    }
-    this->layers[num_layers - 1] = new layer(hidden_sizes[num_layers - 2], output_size, function_name);
-  }
-  else if(num_layers == 1){
-    this->layers[0] = new layer(input_size, output_size, function_name);
+  if(use_cuda){
+    this->cuda_init(hidden_sizes);
   }
   else{
-    cout<<"Error: num_layers must be greater than 0"<<endl;
-    exit(1);
+    this->cpu_init(hidden_sizes);
   }
-  
-  this->softmax_layer = nullptr;
-  
-  BackwardClass *loss_predecessor = layers[num_layers - 1]->get_output();
-  this->mse_loss_layer = new mse_loss(loss_predecessor, output_size);
-  this->ce_loss_layer = nullptr;
 }
 
 mlp::~mlp(){
-  for(int i = 0; i < num_layers; i++){
+  for(int i = 0; i < this->num_layers; i++){
     delete layers[i];
   }
   delete[] layers;
@@ -195,17 +247,26 @@ mlp::~mlp(){
   
   delete softmax_layer;
   
-  delete mse_loss_layer;
-  delete ce_loss_layer;
+  delete loss_layer;
 }
 
 /* GETTERS */
 int mlp::get_prediction(){
-  return this->softmax_layer->get_prediction();
+  if(this->has_softmax){
+    return this->softmax_layer->get_prediction();
+  }
+  else{
+    return -1;
+  }
 }
 
 float mlp::get_prediction_probability(int index){
-  return this->softmax_layer->get_prediction_probability(index);
+  if(this->has_softmax){
+    return this->softmax_layer->get_prediction_probability(index);
+  }
+  else{
+    return 0.0f;
+  }
 }
 
 /* METHODS */
@@ -217,13 +278,12 @@ BackwardClass* mlp::operator()(BackwardClass *in){
     layers[i]->operator()(out);
     out = layers[i]->get_output();
   }
-  
+
   // Use softmax if needed
   if(this->has_softmax){
     float *last_values = out->values_pointer();
     this->softmax_layer->copy_values(last_values);
     this->softmax_layer->operator()();
-    
     return this->softmax_layer;
   }
 
@@ -232,15 +292,9 @@ BackwardClass* mlp::operator()(BackwardClass *in){
 
 // Compute loss with target array
 void mlp::compute_loss(float *target){
-  if(this->loss_function == MSE){
-    this->mse_loss_layer->operator()(target);
-    this->current_loss += this->mse_loss_layer->get_loss();
-    this->mse_loss_layer->backward();
-  } else if(this->loss_function == CROSS_ENTROPY){
-    this->ce_loss_layer->operator()(target);
-    this->current_loss += this->ce_loss_layer->get_loss();
-    this->ce_loss_layer->backward();
-  }
+  this->loss_layer->operator()(target);
+  this->current_loss += this->loss_layer->get_loss();
+  this->loss_layer->backward();
 }
 
 // Compute loss with target index (for classification)
@@ -251,14 +305,14 @@ void mlp::compute_loss(int target_index){
     for(int i = 0; i < this->output_size; i++){
       target[i] = (i == target_index) ? 1.0f : 0.0f;
     }
-    this->mse_loss_layer->operator()(target);
-    this->current_loss += this->mse_loss_layer->get_loss();
-    this->mse_loss_layer->backward();
+    this->loss_layer->operator()(target);
+    this->current_loss += this->loss_layer->get_loss();
+    this->loss_layer->backward();
     delete[] target;
   } else if(this->loss_function == CROSS_ENTROPY){
-    this->ce_loss_layer->operator()(target_index);
-    this->current_loss += this->ce_loss_layer->get_loss();
-    this->ce_loss_layer->backward();
+    this->loss_layer->operator()(target_index);
+    this->current_loss += this->loss_layer->get_loss();
+    this->loss_layer->backward();
   }
 }
 
@@ -300,6 +354,38 @@ void mlp::print_grad_weights(){
 
 void mlp::print_loss(){
   cout << "Loss: " << this->current_loss << endl;
+}
+
+void mlp::print_last_layer_weights(){
+  layers[this->num_layers - 1]->print_weights();
+  int a;
+  cin>>a;
+}
+
+void mlp::print_last_layer_grad_weights(){
+  std::cout << "=== LAST LAYER GRADIENTS ===" << std::endl;
+  layers[this->num_layers - 1]->print_grad_weights();
+}
+
+void mlp::print_loss_gradients(){
+#ifdef __CUDACC__
+  float *d_grad = this->loss_layer->grad_pointer();
+  float *h_grad = new float[this->output_size];
+  copy_device_to_host(h_grad, d_grad, this->output_size);
+  std::cout << "=== LOSS LAYER GRADIENTS ===" << std::endl;
+  for(int i = 0; i < this->output_size; i++){
+    std::cout << h_grad[i] << " ";
+  }
+  std::cout << std::endl;
+  delete[] h_grad;
+#else
+  float *grad = this->loss_layer->grad_pointer();
+  std::cout << "=== LOSS LAYER GRADIENTS ===" << std::endl;
+  for(int i = 0; i < this->output_size; i++){
+    std::cout << grad[i] << " ";
+  }
+  std::cout << std::endl;
+#endif
 }
 
 #endif

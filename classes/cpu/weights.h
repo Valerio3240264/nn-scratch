@@ -46,7 +46,7 @@ Methods:
 
 using namespace std;
 
-class weights: public BackwardClass{
+class weights: public WeightsClass{
   private:
     float *w;
     float *grad_w;
@@ -68,7 +68,7 @@ class weights: public BackwardClass{
     float *bias_pointer();
     float *grad_bias_pointer();
     // Methods
-    float *operator()(BackwardClass * in);
+    void operator()(BackwardClass * in, float *output_pointer) override;
     // Backpropagation functions
     void zero_grad() override;
     void backward(float *derivatives) override;
@@ -112,16 +112,11 @@ weights::weights(int input_size, int output_size){
   default_random_engine generator;
   uniform_real_distribution<float> distribution(-scale, scale);
 
-  for (int i = 0; i < input_size * output_size; i++)
-  {
-    // Random value between -scale and scale
+  for (int i = 0; i < input_size * output_size; i++){
     this->w[i] = distribution(generator);
     this->grad_w[i] = 0.0f;
   }
-  
-  // Initialize biases to zero (common practice)
-  for (int i = 0; i < output_size; i++)
-  {
+  for (int i = 0; i < output_size; i++){
     this->b[i] = 0.0f;
     this->grad_b[i] = 0.0f;
   }
@@ -136,7 +131,7 @@ weights::~weights(){
 }
 
 /* GETTERS */
-// Get the values pointer
+// Get the weights pointer
 float *weights::values_pointer(){
   return this->w;
 }
@@ -157,19 +152,18 @@ float *weights::grad_bias_pointer(){
 }
 
 /* METHODS */
-// Operator to evaluate the output
+// Forward pass
 // W x Input + b
-float *weights::operator()(BackwardClass *in){
+void weights::operator()(BackwardClass *in, float *output_pointer){
   this->input_values = in->values_pointer();
   this->pred = in;
-  float *output = new float[output_size];
   for (int row = 0; row < this->output_size; row++){
-    output[row] = this->b[row];  // Initialize with bias
+    output_pointer[row] = this->b[row];
     for(int col = 0; col< this->input_size; col++){
-      output[row] += this->w[row * this->input_size + col] * this->input_values[col];
+      output_pointer[row] += this->w[row * this->input_size + col] * this->input_values[col];
     }
   }
-  return output;
+  return;
 }
 
 /* BACKPROPAGATION FUNCTIONS */
@@ -193,7 +187,7 @@ void weights::backward(float *derivatives){
       this->grad_w[row * this->input_size + col] += derivatives[row] * this->input_values[col];
     }
   }
- 
+
   for(int row = 0; row < this->output_size; row++){
     this->grad_b[row] += derivatives[row];
   }

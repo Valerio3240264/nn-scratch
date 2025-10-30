@@ -5,6 +5,13 @@
 #include "cpu/weights.h"
 #include "cpu/input.h"
 #include "cpu/activation_function.h"
+#ifdef __CUDACC__
+#include "cuda/cuda_manager.cuh"
+#include "cuda/cuda_weights.cuh"
+#include "cuda/cuda_input.cuh"
+#include "cuda/cuda_activation_function.cuh"
+#endif
+#include "virtual_classes.h"
 #include "enums.h"
 
 /*TODO
@@ -42,18 +49,18 @@ Methods:
 
 using namespace std;
 
-class layer
-{
+class layer{
   private:
     BackwardClass *in;
-    activation_function *out;
-    weights* W;
+    ActivationClass *out;
+    WeightsClass *W;
     int input_size;
     int output_size;
     Activation_name function_name;
+    bool use_cuda;
 
   public:
-    layer(int input_size, int output_size, Activation_name activation_function);
+    layer(int input_size, int output_size, Activation_name function_name, bool use_cuda = false);
     ~layer();
 
     // Methods
@@ -73,14 +80,31 @@ class layer
 
 /* CONSTRUCTOR AND DESTRUCTOR */
 // Constructor
-layer::layer(int input_size, int output_size, Activation_name function_name){
-  this->input_size = input_size;
-  this->output_size = output_size;
-  this->W = new weights(input_size, output_size);
-  this->function_name = function_name;
-  this->in = nullptr;
-  float *output_buffer = new float[output_size];
-  this->out = new activation_function(output_size, output_buffer, function_name, this->W);
+layer::layer(int input_size, int output_size, Activation_name function_name, bool use_cuda){
+#ifdef __CUDACC__
+  if(use_cuda){
+    this->input_size = input_size;
+    this->output_size = output_size;
+    this->W = new cuda_weights(input_size, output_size);
+    this->function_name = function_name;
+    this->in = nullptr;
+    float *output_buffer;
+    allocate_device_memory<float>(&output_buffer, output_size);
+    this->out = new cuda_activation_function(output_size, output_buffer, function_name, this->W);
+    this->use_cuda = use_cuda;
+  }
+  else
+#endif
+  {
+    this->input_size = input_size;
+    this->output_size = output_size;
+    this->W = new weights(input_size, output_size);
+    this->function_name = function_name;
+    this->in = nullptr;
+    float *output_buffer = new float[output_size];
+    this->out = new activation_function(output_size, output_buffer, function_name, this->W);
+    this->use_cuda = use_cuda;
+  }
 }
 
 // Destructor
@@ -95,13 +119,8 @@ layer::~layer(){
 // Operator to evaluate the output
 void layer::operator()(BackwardClass *in){
   this->in = in;
-  float *weights_output = (*this->W)(in);
-  
   float *out_buffer = this->out->values_pointer();
-  for(int i = 0; i < this->output_size; i++){
-    out_buffer[i] = weights_output[i];
-  }
-  
+  (*this->W)(in, out_buffer);
   this->out->operator()();
 }
 
@@ -110,9 +129,6 @@ void layer::zero_grad(){
   this->W->zero_grad();
   if(this->out != nullptr){
     this->out->zero_grad();
-  }
-  if(this->in != nullptr){
-    this->in->zero_grad();
   }
 }
 

@@ -1,7 +1,7 @@
 #ifndef CUDA_WEIGHTS_CUH
 #define CUDA_WEIGHTS_CUH
 #include "cuda_input.cuh"
-#include "virtual_classes.h"
+#include "../virtual_classes.h"
 #include "cuda_manager.cuh"
 #include <iostream>
 
@@ -11,30 +11,43 @@ using namespace std;
 CUDA WEIGHTS CLASS DOCUMENTATION:
 PURPOSE:
 This class has the same purpose of the weights class but it is used to store the weights and gradients in device memory.
+
+Note: When using this class, we assume that each class that interacts with this class (in the raw layer) has memory allocated in device memory.
 */
 
-class cuda_weights: public BackwardClass{
+class cuda_weights: public WeightsClass{
   private:
-    double *d_w;
-    double *d_grad_w;
+    float *d_w;
+    float *d_grad_w;
+    float *d_b;
+    float *d_grad_b;
+    float *d_input_grad_buffer;
     int input_size;
     int output_size;
-    double *d_input_values;
+    float *d_input_values;
     BackwardClass *pred;
 
   public:
-  // Constructor
+
+    // Constructor
     cuda_weights(int input_size, int output_size);
-  // Destructor
+  
+    // Destructor
     ~cuda_weights();
-  // Getters
-    double *values_pointer() override;
-    double *grad_pointer() override;
-  // Methods
-    void backward(double *derivatives) override;
+  
+    // Getters
+    float *values_pointer() override;
+    float *grad_pointer() override;
+    float *bias_pointer();
+    float *grad_bias_pointer();
+  
+    // Methods
+    void backward(float *derivatives) override;
     void zero_grad() override;
-    double *operator()(BackwardClass *in);
-    void update(double learning_rate);
+    void operator()(BackwardClass *in, float *output_pointer) override;
+    void update(float learning_rate);
+    void print_weights() override;
+    void print_grad_weights() override;
 };
 
 /* CONSTRUCTOR AND DESTRUCTOR */
@@ -44,56 +57,104 @@ cuda_weights::cuda_weights(int input_size, int output_size){
   this->output_size = output_size;
   this->d_w = nullptr;
   this->d_grad_w = nullptr;
+  this->d_b = nullptr;
+  this->d_grad_b = nullptr;
+  this->d_input_grad_buffer = nullptr;
   this->d_input_values = nullptr;
   this->pred = nullptr;
 
-  cuda_manager::allocate_device_memory_random(this->d_w, input_size * output_size);
-  cuda_manager::allocate_device_memory_zeros(this->d_grad_w, input_size * output_size);
+  // Initialize weights with Xavier/Glorot initialization
+  allocate_device_memory_xavier<float>(&this->d_w, input_size * output_size, input_size);
+  allocate_device_memory_zeros<float>(&this->d_grad_w, input_size * output_size);
+  allocate_device_memory_zeros<float>(&this->d_b, output_size);
+  allocate_device_memory_zeros<float>(&this->d_grad_b, output_size);
+  allocate_device_memory_zeros<float>(&this->d_input_grad_buffer, input_size);
 }
 
 // Destructor
 cuda_weights::~cuda_weights(){
-  cuda_manager::free_device_memory(this->d_w);
-  cuda_manager::free_device_memory(this->d_grad_w);
+  free_device_memory(this->d_w);
+  free_device_memory(this->d_grad_w);
+  free_device_memory(this->d_b);
+  free_device_memory(this->d_grad_b);
+  free_device_memory(this->d_input_grad_buffer);
 }
 
 /* GETTERS */
-// Get the values pointer
-double *cuda_weights::values_pointer(){
+// Get the weights pointer
+float *cuda_weights::values_pointer(){
   return this->d_w;
 }
 
 // Get the gradient pointer
-double *cuda_weights::grad_pointer(){
+float *cuda_weights::grad_pointer(){
   return this->d_grad_w;
 }
 
-/* METHODS */
-// Operator to evaluate the output
-// W x Inputt
-double *cuda_weights::operator()(BackwardClass *in){
-  this->d_input_values = in->values_pointer(); // We assume that the predecessor is already in device memory
-  this->pred = in;
-  double *output = nullptr;
-  cuda_manager::allocate_device_memory(output, this->output_size);
-  cuda_manager::launch_matrix_vector_multiply(this->d_w, this->d_input_values, output, this->output_size, this->input_size);
-  return output;
+// Get the bias pointer
+float *cuda_weights::bias_pointer(){
+  return this->d_b;
 }
 
-/* BACKPROPAGATION FUNCTIONS */
+// Get the bias gradient pointer
+float *cuda_weights::grad_bias_pointer(){
+  return this->d_grad_b;
+}
+
+/* METHODS */
+// Forward pass
+// W x Input + b
+void cuda_weights::operator()(BackwardClass *in, float *output_pointer){
+  this->d_input_values = in->values_pointer();
+  this->pred = in;
+  launch_I_W_B_multiplication(this->d_w, this->d_input_values, this->d_b, output_pointer, this->output_size, this->input_size);
+  return;
+}
+
 // Zero the gradient
 void cuda_weights::zero_grad(){
-  cuda_manager::zero_device_memory(this->d_grad_w, this->input_size * this->output_size);
+  zero_device_memory(this->d_grad_w, this->input_size * this->output_size);
+  zero_device_memory(this->d_grad_b, this->output_size);
 }
 
 // Backward pass
-void cuda_weights::backward(double *derivatives){
-  /*TODO*/
+void cuda_weights::backward(float *derivatives){
+  zero_device_memory(this->d_input_grad_buffer, this->input_size);
+  
+  launch_backward_W(this->d_w, this->d_input_values, derivatives, this->d_grad_w, this->d_input_grad_buffer, this->output_size, this->input_size);
+  launch_backward_bias(this->d_b, derivatives, this->d_grad_b, this->output_size);
+  
+  this->pred->backward(this->d_input_grad_buffer);
 }
 
 // Update the weights
-void cuda_weights::update(double learning_rate){
-  cuda_manager::launch_update(this->d_w, this->d_grad_w, learning_rate, this->input_size * this->output_size);
+void cuda_weights::update(float learning_rate){
+  launch_update(this->d_w, this->d_grad_w, learning_rate, this->input_size * this->output_size);
+  launch_update(this->d_b, this->d_grad_b, learning_rate, this->output_size);
+}
+
+// Print weights (copies from device to host)
+void cuda_weights::print_weights(){
+  float *h_w = new float[this->input_size * this->output_size];
+  copy_device_to_host(h_w, this->d_w, this->input_size * this->output_size);
+  std::cout << "Weights: ";
+  for(int i = 0; i < this->input_size * this->output_size; i++){
+    std::cout << h_w[i] << " ";
+  }
+  std::cout << std::endl;
+  delete[] h_w;
+}
+
+// Print gradient weights (copies from device to host)
+void cuda_weights::print_grad_weights(){
+  float *h_grad_w = new float[this->input_size * this->output_size];
+  copy_device_to_host(h_grad_w, this->d_grad_w, this->input_size * this->output_size);
+  std::cout << "Gradient Weights: ";
+  for(int i = 0; i < this->input_size * this->output_size; i++){
+    std::cout << h_grad_w[i] << " ";
+  }
+  std::cout << std::endl;
+  delete[] h_grad_w;
 }
 
 #endif

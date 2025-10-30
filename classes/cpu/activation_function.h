@@ -40,7 +40,7 @@ Methods:
 
 using namespace std;
 
-class activation_function : public BackwardClass {
+class activation_function : public ActivationClass {
   private:
     int size;
     float *value;
@@ -143,27 +143,21 @@ void activation_function::zero_grad(){
 
 // Backward pass
 void activation_function::backward(float *derivatives){
-  float *prevGrad = new float[this->size];
   for(int i = 0; i < this->size; i++){
     if(this->function_name == TANH){
-      prevGrad[i] = derivatives[i] * (1 - (this->value[i]* this->value[i]));
-      this->grad[i] += prevGrad[i];
+      this->grad[i] = derivatives[i] * (1 - (this->value[i]* this->value[i]));
     }
     else if(this->function_name == RELU){
-      prevGrad[i] = derivatives[i] * (this->value[i] > 0 ? 1 : 0);
-      this->grad[i] += prevGrad[i];
+      this->grad[i] = derivatives[i] * (this->value[i] > 0 ? 1 : 0);
     }
     else if(this->function_name == LINEAR){
-      // LINEAR: derivative is 1, pass gradient through unchanged
-      prevGrad[i] = derivatives[i] * 1.0f;
-      this->grad[i] += prevGrad[i];
+      this->grad[i] = derivatives[i];
     }
     else{
       throw invalid_argument("Invalid activation function");
     }
   }
-  this->pred->backward(prevGrad);
-  delete[] prevGrad;
+  this->pred->backward(this->grad);
 }
 
 /* TESTING FUNCTIONS */

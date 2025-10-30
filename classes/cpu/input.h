@@ -72,7 +72,7 @@ class input : public BackwardClass {
 };
 
 /* CONSTRUCTORS AND DESTRUCTOR */
-// Constructor for base input
+// Constructor - allocates its own memory
 input::input(int size){
   this->size = size;
   this->value = new float[size];
@@ -85,7 +85,7 @@ input::input(int size){
   }
 }
 
-// Constructor for input with value
+// Constructor - allocates its own memory and copies values from an external array
 input::input(int size, float *value) {
   this->size = size;
   this->value = value;
@@ -97,7 +97,7 @@ input::input(int size, float *value) {
   }
 }
 
-// Constructor for input with predecessor
+// Constructor - sets the predecessor pointer
 input::input(int size, BackwardClass *pred) {
   this->size = size;
   this->value = pred->values_pointer();
@@ -149,10 +149,10 @@ void input::zero_grad(){
 // Backward pass
 void input::backward(float *derivatives){
   for (int i = 0; i < size; i++){
-    this->grad[i] += derivatives[i];
+    this->grad[i] = derivatives[i];
   }
   if (this->pred != nullptr) {
-    this->pred->backward(derivatives);
+    this->pred->backward(this->grad);
   }
 }
 

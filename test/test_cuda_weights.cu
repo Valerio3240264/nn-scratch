@@ -178,7 +178,7 @@ void test_cuda_functionality() {
     cout << BLUE << "\n=== Testing CUDA Functionality ===" << RESET << endl;
     
     // Test CUDA availability detection
-    bool cuda_available = CudaManager::is_cuda_available();
+    bool cuda_available = is_cuda_available();
     print_test_result("CUDA Availability Detection", true, 
         cuda_available ? "CUDA Available" : "CUDA Not Available");
     
@@ -243,7 +243,7 @@ void test_performance() {
         cout << "  CPU Time: " << cpu_time / PERFORMANCE_ITERATIONS << " μs/iteration" << endl;
         cout << "  Auto Time: " << auto_time / PERFORMANCE_ITERATIONS << " μs/iteration" << endl;
         
-        if (CudaManager::is_cuda_available() && auto_time > 0) {
+        if (is_cuda_available() && auto_time > 0) {
             double speedup = (double)cpu_time / auto_time;
             cout << "  Speedup: " << fixed << setprecision(2) << speedup << "x" << endl;
             
