@@ -9,7 +9,7 @@ This project is an educational implementation of a neural network framework buil
 Rather than using existing frameworks as black boxes, this project is an "original" implementation of a neural network framework.
 The code architecture has been completely designed by me, I don't know if something similar exists.
 I gained a deeper understanding of:
-- Manage complex computational graphs
+- How to manage complex computational graphs 
 - How to write an efficient and correct forward propagation algorithm
 - How to write an efficient and correct backpropagation algorithm
 - How GPU acceleration can be implemented using CUDA
@@ -29,4 +29,5 @@ This project is a learning exercise to bridge the gap between theoretical unders
 ## Resources used
 - [Understanding the difficulty of training deep feedforward neural networks](https://proceedings.mlr.press/v9/glorot10a/glorot10a.pdf)
 - [How to Optimize a CUDA Matmul Kernel for cuBLAS-like Performance: a Worklog](https://siboehm.com/articles/22/CUDA-MMM)
+
 A special thanks to chatgpt and claude for helping debugging the code.
