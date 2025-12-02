@@ -1,78 +1,32 @@
-This is a personal project to implement and optimize a neural network from scratch using C++.
-The goal of this project is to learn what does a neural network under the hood and try to optimize it as much as possible.
+# Neural Network Framework from Scratch
 
-## Layer Architecture and Object Linking
+## Project Overview
 
-### How Layers Work
-Each layer in the neural network follows this architecture:
-```
-Input -> Weights -> Activation_function -> Output
-```
+This project is an educational implementation of a neural network framework built from scratch in C++. The primary goal is to understand the fundamental components and mechanisms that power modern deep learning frameworks like PyTorch and TensorFlow.
 
-A **layer** class stores:
-- `in`: pointer to the input (Input class)
-- `out`: pointer to the output (Activation_function class) 
-- `W`: pointer to the weights (Weights class)
-- `input_size`, `output_size`: dimensions
-- `function_name`: activation function type
+## Purpose
 
-When a layer processes data via `operator()(input *in)`:
-1. Takes an input object
-2. Performs matrix multiplication through weights: `double *weights_output = (*this->W)(in)`
-3. Creates activation_function object with the weighted output
-4. Applies the activation function to get the final layer output
+Rather than using existing frameworks as black boxes, this project is an "original" implementation of a neural network framework.
+The code architecture has been completely designed by me, I don't know if something similar exists.
+I gained a deeper understanding of:
+- Manage complex computational graphs
+- How to write an efficient and correct forward propagation algorithm
+- How to write an efficient and correct backpropagation algorithm
+- How GPU acceleration can be implemented using CUDA
 
-### How Objects Are Linked Together
+## What's Implemented
 
-The neural network uses a **graph-based backpropagation approach** where each component has a **predecessor pointer** (`pred`) that creates edges in the computational graph.
+The framework includes:
 
-**Object Linking Flow:**
-```
-layer_0 -> layer_1 -> ... -> layer_n-1 -> layer_n -> Loss
-```
+- **Core Components**: Layers, weights, activation functions (ReLU, Sigmoid, Tanh, Linear), and loss functions (MSE, Cross-Entropy)
+- **Network Architecture**: Multi-Layer Perceptron (MLP) that can be configured with any number of layers and sizes
+- **Training Pipeline**: Complete forward pass, loss computation, backpropagation, and weight updates
+- **Dual Implementation**: Both CPU and CUDA (GPU) versions for performance comparison
+- **Real-World Testing**: Validated on the MNIST digit recognition dataset
 
-**Linking Mechanism:**
-- Each `input` object can be linked to a predecessor via `input(int size, BackwardClass *pred)`
-- Each `activation_function` stores a predecessor pointer to enable backward pass
-- Each `weights` object maintains a predecessor link for gradient flow
-- The `loss` function connects to the final layer output
+This project is a learning exercise to bridge the gap between theoretical understanding of neural networks and their practical implementation in production frameworks and also to gain a deeper understanding and insights about how neural networks work internally.
 
-**Gradient Flow (Backward Pass):**
-The predecessor pointers enable automatic gradient propagation:
-1. Loss function computes gradients and calls `pred->backward(derivatives)`
-2. Each layer propagates gradients to its predecessor
-3. Chain continues until reaching the input layer
-
-This creates a computational graph where "Layer_i will call Layer_i-1 activation_function and so on until the input layer."
-
-## Current TODO List
-
-### CUDA KERNELS
-1. ❌ Optimize the matrix-vector multiplication.
-2. ❌ Write matmul cuda kernel.
-3. ❌ Write gradient update cuda kernel for weights.
-
-### Activation Function (activation_function.h)
-1. ❌ Create a function to evaluate the output of a whole batch
-2. ❌ Create a function to evaluate the gradient of a whole batch  
-3. ❌ Optimize the batch operations using personalized cuda kernels
-
-### Layer (layer.h)
-1. ❌ Create functions to evaluate the output and gradient of a whole batch
-
-### Loss Function (loss.h)
-1. ❌ Write a backward function that does not need to know the derivatives value since it is the first step of the backward pass and the derivatives are known
-2. ❌ Create a function to evaluate the loss of a whole batch
-3. ❌ Create a function to evaluate the gradient of a whole batch
-4. ❌ Optimize the batch operations using personalized cuda kernels
-
-### Multi-Layer Perceptron (mlp.h)
-1. ❌ Create functions to evaluate the output and gradient of a whole batch
-2. ❌ Optimize the batch operations using personalized cuda kernels
-
-### Weights (weights.h)  
-1. ❌ Optimize the matrix multiplication using a personalized CUDA kernel
-2. ❌ Optimize the gradient computation using a personalized CUDA kernel
-3. ❌ Create a function to evaluate to process a whole batch of data (not only one single data point)
-4. ❌ Create a function to evaluate the gradient of a whole batch
-5. ❌ Optimize the batch operations using personalized cuda kernels
+## Resources used
+- [Understanding the difficulty of training deep feedforward neural networks](https://proceedings.mlr.press/v9/glorot10a/glorot10a.pdf)
+- [How to Optimize a CUDA Matmul Kernel for cuBLAS-like Performance: a Worklog](https://siboehm.com/articles/22/CUDA-MMM)
+A special thanks to chatgpt and claude for helping debugging the code.

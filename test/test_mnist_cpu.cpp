@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <random>
 #include <vector>
+#include <chrono>
 
 #include "../classes/cpu/input.h"
 #include "../classes/enums.h"
@@ -128,7 +129,7 @@ Loss_name loss_function = CROSS_ENTROPY;
 bool use_softmax = true;
 int num_epochs = 5;
 int batch_size = 100;
-float learning_rate = 0.0001;
+float learning_rate = 0.01;
 
 int main(){
   std::cout << "Starting MNIST training..." << std::endl;
@@ -183,28 +184,69 @@ int main(){
     
     network.zero_loss();
     
+    // Timing accumulators
+    double total_forward_time = 0.0;
+    double total_loss_time = 0.0;
+    double total_update_time = 0.0;
+    int num_batches = 0;
+    
     // Train on shuffled data
     for(int i = 0; i < train_indices.size(); i++){
       int idx = train_indices[i];
+      
+      // Forward pass (timed)
+      auto start_time = std::chrono::high_resolution_clock::now();
       network(dataset[idx]);
+      auto end_time = std::chrono::high_resolution_clock::now();
+      auto forward_time = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time).count() / 1000.0; // Convert to ms
+      total_forward_time += forward_time;
+      
+      // Compute loss (includes backward pass) (timed)
+      start_time = std::chrono::high_resolution_clock::now();
       network.compute_loss(labels[idx]);
+      end_time = std::chrono::high_resolution_clock::now();
+      auto loss_time = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time).count() / 1000.0; // Convert to ms
+      total_loss_time += loss_time;
       
       // Update after accumulating batch_size gradients
       if((i + 1) % batch_size == 0){
-        network.update(learning_rate);
+        start_time = std::chrono::high_resolution_clock::now();
+        network.update(learning_rate/batch_size);
+        end_time = std::chrono::high_resolution_clock::now();
+        auto update_time = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time).count() / 1000.0; // Convert to ms
+        total_update_time += update_time;
+        num_batches++;
         network.zero_grad();
       }
     }
     
     // Update with remaining samples if training_samples not divisible by batch_size
     if(train_indices.size() % batch_size != 0){
-      network.update(learning_rate);
+      auto start_time = std::chrono::high_resolution_clock::now();
+      network.update(learning_rate/batch_size);
+      auto end_time = std::chrono::high_resolution_clock::now();
+      auto update_time = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time).count() / 1000.0; // Convert to ms
+      total_update_time += update_time;
+      num_batches++;
       network.zero_grad();
     }
     
-    // Print training loss
+    // Print timing statistics
+    std::cout << "\n--- Timing Statistics (Epoch " << (epoch + 1) << ") ---" << std::endl;
+    std::cout << std::fixed << std::setprecision(4);
+    std::cout << "Mean Forward Pass Time:    " << total_forward_time / train_indices.size() << " ms" << std::endl;
+    std::cout << "Mean Compute Loss Time:    " << total_loss_time / train_indices.size() << " ms" << std::endl;
+    if(num_batches > 0){
+      std::cout << "Mean Update Step Time:     " << total_update_time / num_batches << " ms" << std::endl;
+    }
+    std::cout << "Total Forward Time:        " << total_forward_time << " ms" << std::endl;
+    std::cout << "Total Compute Loss Time:    " << total_loss_time << " ms" << std::endl;
+    std::cout << "Total Update Step Time:    " << total_update_time << " ms" << std::endl;
+    double total_time = total_forward_time + total_loss_time + total_update_time;
+    std::cout << "Total Epoch Time:          " << total_time << " ms (" << total_time / 1000.0 << " seconds)" << std::endl;
     std::cout << "Training ";
     network.print_loss();
+    std::cout << "------------------------------------\n" << std::endl;
   }
 
   // FINAL TESTING PHASE

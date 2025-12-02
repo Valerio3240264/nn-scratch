@@ -7,12 +7,14 @@ import numpy as np
 import time
 from pathlib import Path
 
+simulated_batch = 100
+
 # Set random seed for reproducibility
 torch.manual_seed(42)
 np.random.seed(42)
 
 # Check for GPU availability
-device = torch.device('cpu')
+device = 'cpu'
 print(f"Using device: {device}")
 if torch.cuda.is_available():
     print(f"GPU: {torch.cuda.get_device_name(0)}")
@@ -102,52 +104,53 @@ def train_epoch(model, dataloader, criterion, optimizer, device, epoch):
         features, labels = features.to(device), labels.to(device)
         
         # Zero gradients
-        optimizer.zero_grad()
+        if (batch_idx + 1) % simulated_batch == 0:    
+            optimizer.zero_grad()
         
         # Forward pass (timed)
-        if device.type == 'cuda':
+        if device == 'cuda':
             torch.cuda.synchronize()
         start_time = time.perf_counter()
         
         outputs = model(features)
         
-        if device.type == 'cuda':
+        if device == 'cuda':
             torch.cuda.synchronize()
         forward_time = (time.perf_counter() - start_time) * 1000  # Convert to ms
         total_forward_time += forward_time
         
         # Compute loss (timed)
-        if device.type == 'cuda':
+        if device == 'cuda':
             torch.cuda.synchronize()
         start_time = time.perf_counter()
         
-        loss = criterion(outputs, labels)
+        loss = criterion(outputs, labels)/simulated_batch
         
-        if device.type == 'cuda':
+        if device == 'cuda':
             torch.cuda.synchronize()
         loss_time = (time.perf_counter() - start_time) * 1000
         total_loss_time += loss_time
         
         # Backward pass (timed)
-        if device.type == 'cuda':
+        if device == 'cuda':
             torch.cuda.synchronize()
         start_time = time.perf_counter()
         
         loss.backward()
         
-        if device.type == 'cuda':
+        if device == 'cuda':
             torch.cuda.synchronize()
         backward_time = (time.perf_counter() - start_time) * 1000
         total_backward_time += backward_time
         
         # Optimizer step (timed)
-        if device.type == 'cuda':
+        if device == 'cuda':
             torch.cuda.synchronize()
         start_time = time.perf_counter()
+        if (batch_idx+1) % simulated_batch == 0:
+            optimizer.step()
         
-        optimizer.step()
-        
-        if device.type == 'cuda':
+        if device == 'cuda':
             torch.cuda.synchronize()
         optimizer_time = (time.perf_counter() - start_time) * 1000
         total_optimizer_time += optimizer_time
@@ -157,6 +160,8 @@ def train_epoch(model, dataloader, criterion, optimizer, device, epoch):
         total_samples += labels.size(0)
         num_batches += 1
     
+
+
     avg_loss = total_loss / total_samples
     
     # Print timing statistics
@@ -185,7 +190,7 @@ def main():
     hidden_sizes = [256, 128]
     output_size = 10
     num_epochs = 5
-    batch_size = 100
+    batch_size = 1
     learning_rate = 0.01
     
     print("=" * 60)
@@ -215,7 +220,7 @@ def main():
         batch_size=batch_size, 
         shuffle=True,
         num_workers=0,  # Set to 0 for Windows compatibility
-        pin_memory=True if device.type == 'cuda' else False
+        pin_memory=False
     )
     
     val_loader = DataLoader(
@@ -223,7 +228,7 @@ def main():
         batch_size=batch_size,
         shuffle=False,
         num_workers=0,
-        pin_memory=True if device.type == 'cuda' else False
+        pin_memory=False
     )
     
     # Create model
