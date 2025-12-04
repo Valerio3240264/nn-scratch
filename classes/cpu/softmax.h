@@ -154,20 +154,16 @@ void softmax::operator()(){
     return;
   }
 
-  // Find max value for numerical stability
   float max_val = this->value[0];
-  for(int i = 1; i < this->size; i++){
+  float Z = 0.f;
+
+  // Calculate max value and Z in the same cycle
+  for(int i = 0; i< this->size; i++){
     if(this->value[i] > max_val){
+      Z *= expf((max_val - this->value[i])/this->temperature );
       max_val = this->value[i];
     }
-  }
-  
-  // Compute exp(x - max) and sum for numerical stability
-  // This is mathematically equivalent to the softmax function, but it is more numerically stable.
-  // This is just the softmax function multiplied by e^(-max_val)/e^(-max_val) = 1
-  float Z = 0.f;
-  for(int i = 0; i < this->size; i++){
-    Z += expf((this->value[i] - max_val) / this->temperature);
+    Z += expf((this->value[i] - max_val)/this->temperature);
   }
   
   // Normalize

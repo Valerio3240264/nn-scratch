@@ -28,10 +28,7 @@ __global__ void backward_relu(float *V, float *derivatives, float *grad, int siz
 __global__ void backward_linear(float *V, float *derivatives, float *grad, int size);
 
 /* SOFTMAX KERNELS */
-// Forward pass kernels
-__global__ void find_max_kernel(float *d_input, float *d_max, int size);
-__global__ void softmax_exp_sum_kernel(float *d_value, float *d_max_val, float temperature, float *d_exp_sum, int size);
-__global__ void softmax_normalize_kernel(float *d_value, float *d_exp_sum, int size);
+__global__ void vector_softmax_kernel(float *d_value, float temperature, int size);
 
 // Backward pass kernels
 __global__ void softmax_dot_product_kernel(float *d_value, float *d_derivatives, float *d_dot, int size);
@@ -120,7 +117,7 @@ void launch_backward_relu(float* d_value, float* d_derivatives, float* d_grad, i
 void launch_backward_linear(float* d_value, float* d_derivatives, float* d_grad, int size);
 
 // Softmax kernels
-void launch_softmax_forward(float* d_value, float temperature, int size, float* d_max, float* d_exp_sum);
+void launch_vector_softmax(float* d_value, float temperature, int size);
 void launch_softmax_backward(float* d_value, float* d_derivatives, float* d_grad, float temperature, int size, float* d_dot);
 
 // One-hot encoding kernel
@@ -401,28 +398,14 @@ inline void launch_backward_linear(float* d_value, float* d_derivatives, float* 
 }
 
 /* SOFTMAX KERNELS */
-// Launch softmax forward pass
-inline void launch_softmax_forward(float* d_value, float temperature, int size, float* d_max, float* d_exp_sum) {
-  const int THREADS_PER_BLOCK = 256;
-  int num_blocks = (size + THREADS_PER_BLOCK - 1) / THREADS_PER_BLOCK;
+// Launch vector softmax kernel
+inline void launch_vector_softmax(float* d_value, float temperature, int size) {
+  const int THREADS_PER_BLOCK = 1024;
   
-  // Initialize d_max to negative infinity and d_exp_sum to zero
-  float neg_inf = -INFINITY;
-  copy_host_to_device(d_max, &neg_inf, 1);
-  zero_device_memory(d_exp_sum, 1);
+  dim3 grid(1);  // Single block kernel
+  dim3 block(THREADS_PER_BLOCK);
   
-  // Step 1: Find max value
-  find_max_kernel<<<num_blocks, THREADS_PER_BLOCK>>>(d_value, d_max, size);
-  CUDA_CHECK_MANAGER(cudaGetLastError());
-  CUDA_CHECK_MANAGER(cudaDeviceSynchronize());  // Ensure max is computed before use
-  
-  // Step 2: Compute exp and sum (pass device pointer directly - NO HOST COPY!)
-  softmax_exp_sum_kernel<<<num_blocks, THREADS_PER_BLOCK>>>(d_value, d_max, temperature, d_exp_sum, size);
-  CUDA_CHECK_MANAGER(cudaGetLastError());
-  CUDA_CHECK_MANAGER(cudaDeviceSynchronize());  // Ensure sum is computed before use
-  
-  // Step 3: Normalize (pass device pointer directly - NO HOST COPY!)
-  softmax_normalize_kernel<<<num_blocks, THREADS_PER_BLOCK>>>(d_value, d_exp_sum, size);
+  vector_softmax_kernel<<<grid, block>>>(d_value, temperature, size);
   CUDA_CHECK_MANAGER(cudaGetLastError());
 }
 

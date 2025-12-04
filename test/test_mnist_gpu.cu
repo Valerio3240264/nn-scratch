@@ -322,9 +322,7 @@ int main(){
   }
   delete[] dataset;
   delete[] labels;
-  delete network;
   
   std::cout << "\nGPU Training completed successfully!" << std::endl;
   return 0;
 }
-
