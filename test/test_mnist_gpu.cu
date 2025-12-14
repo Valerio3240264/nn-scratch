@@ -203,6 +203,7 @@ int main(){
     std::cout << "Epoch " << (epoch + 1) << " started" << std::endl;
     
     network.zero_loss();
+    network.zero_grad();
     
     // Timing accumulators for this epoch
     /*

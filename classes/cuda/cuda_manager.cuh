@@ -13,19 +13,32 @@
 using namespace std;
 
 // Forward declaration of CUDA kernels
-__global__ void I_W_B_multiplication(float *d_w, float *d_input_values, float *d_b, float *d_result, int output_size, int input_size);
-__global__ void vector_update(float *V, float *U, float learning_rate, int size);
+/* MATRIX OPERATION KERNELS */
+__global__ void SGEMV(float *w, float *in, float *res, float *bias, int K, int M);
+
+// Vector update kernels
+__global__ void vectorized_vector_update(float *V, float *U, float learning_rate, int size);
+__global__ void non_vectorized_vector_update(float *V, float *U, float learning_rate, int size);
+
 __global__ void backward_W(float *d_w, float *d_input_values, float *d_derivatives, float *d_grad_w, float *prevGrad, int output_size, int input_size);
 __global__ void backward_bias(float *d_b, float *d_derivatives, float *d_grad_b, int output_size);
-/* ACTIVATION FUNCTION KERNELS */
-// Forward pass
-__global__ void activation_tanh(float *V, int size);
-__global__ void activation_relu(float *V, int size);
 
-// Backward pass
-__global__ void backward_tanh(float *V, float *derivatives, float *grad, int size);
-__global__ void backward_relu(float *V, float *derivatives, float *grad, int size);
-__global__ void backward_linear(float *V, float *derivatives, float *grad, int size);
+/* ACTIVATION FUNCTION KERNELS */
+// Vectorized forward pass
+__global__ void vectorized_activation_tanh(float *V, int size);
+__global__ void vectorized_activation_relu(float *V, int size);
+
+// Non-vectorized forward pass
+__global__ void non_vectorized_activation_tanh(float *V, int size);
+__global__ void non_vectorized_activation_relu(float *V, int size);
+
+// Vectorized backward pass
+__global__ void vectorized_backward_tanh(float *V, float *derivatives, float *grad, int size);
+__global__ void vectorized_backward_relu(float *V, float *derivatives, float *grad, int size);
+
+// Non-vectorized backward pass
+__global__ void non_vectorized_backward_tanh(float *V, float *derivatives, float *grad, int size);
+__global__ void non_vectorized_backward_relu(float *V, float *derivatives, float *grad, int size);
 
 /* SOFTMAX KERNELS */
 __global__ void vector_softmax_kernel(float *d_value, float temperature, int size);
@@ -102,9 +115,13 @@ void copy_device_to_host(T* host_ptr, const T* device_ptr, size_t count);
 template<typename T>
 void copy_device_to_device(T* device_ptr, const T* device_ptr2, size_t count);
 
+// Utility functions
+template<typename T>
+bool check_alignment(T* ptr, size_t size);
+
 /* KERNEL LAUNCH UTILITIES */
 // Weights kernels
-void launch_I_W_B_multiplication(float* d_matrix, float* d_vector, float* d_bias, float* d_result, int output_size, int input_size);
+void launch_SGEMV(float* d_w, float* d_input_values, float* d_b, float* d_result, int output_size, int input_size);
 void launch_update(float* d_vector, float* d_update, float learning_rate, int size);
 void launch_backward_W(float* d_w, float* d_input_values, float* d_derivatives, float* d_grad_w, float* prevGrad, int output_size, int input_size);
 void launch_backward_bias(float* d_b, float* d_derivatives, float* d_grad_b, int output_size);
@@ -255,23 +272,45 @@ void copy_device_to_device(T* device_ptr, const T* device_ptr2, size_t count) {
   CUDA_CHECK_MANAGER(cudaMemcpy(device_ptr, device_ptr2, count * sizeof(T), cudaMemcpyDeviceToDevice));
 }
 
+/* UTILITY FUNCTIONS */
+// Check if pointer is 16-byte aligned
+template<typename T>
+bool check_alignment(T* ptr, size_t size) {
+  // Check 16-byte alignment (required for float4 operations)
+  bool aligned16 = ( (reinterpret_cast<uintptr_t>(ptr) & 0xF) == 0 );
+  if (aligned16 && size > 0) {
+    return true;
+  }
+  else{
+    return false;
+  }
+}
+
 /* KERNEL LAUNCH UTILITIES */
 /* WEIGHTS KERNELS */
-// Launch I_W_B_multiplication kernel
-inline void launch_I_W_B_multiplication(float* d_w, float* d_input_values, float* d_b, float* d_result, int output_size, int input_size) {
-  // Optimal threading configuration for the new kernel
-  const int THREADS_PER_BLOCK = 256;  // Balanced for good occupancy
-  int num_blocks = (output_size + THREADS_PER_BLOCK - 1) / THREADS_PER_BLOCK;  // Ceiling division
+// Launch SGEMV kernel (optimized vectorized matrix-vector multiplication)
+inline void launch_SGEMV(float* d_w, float* d_input_values, float* d_b, float* d_result, int output_size, int input_size) {
+  // SGEMV uses one block per output row (M blocks)
+  // Each block processes one row of the matrix-vector multiplication
+  const int THREADS_PER_BLOCK = 256;  // Threads per block for parallel reduction
+  
+  // Grid: one block per output row (M = output_size)
+  int num_blocks = output_size;
+  
+  // Shared memory size for reduction: one float per thread
+  size_t shared_mem_size = sizeof(float) * THREADS_PER_BLOCK;
   
   dim3 grid(num_blocks);
   dim3 block(THREADS_PER_BLOCK);
   
-  I_W_B_multiplication<<<grid, block>>>(d_w, d_input_values, d_b, d_result, output_size, input_size);
+  // Launch SGEMV kernel with shared memory allocation
+  // Parameters: w (weights MxK), in (input K), res (result M), bias (M), K (input_size), M (output_size)
+  SGEMV<<<grid, block, shared_mem_size>>>(d_w, d_input_values, d_result, d_b, input_size, output_size);
   
   CUDA_CHECK_MANAGER(cudaGetLastError());
 }
 
-// Launch update kernel
+// Launch update kernel (automatically chooses vectorized or non-vectorized based on alignment)
 inline void launch_update(float* d_vector, float* d_update, float learning_rate, int size) {
   const int THREADS_PER_BLOCK = 256;
   int num_blocks = (size + THREADS_PER_BLOCK - 1) / THREADS_PER_BLOCK;
@@ -279,7 +318,12 @@ inline void launch_update(float* d_vector, float* d_update, float learning_rate,
   dim3 grid(num_blocks);
   dim3 block(THREADS_PER_BLOCK);
   
-  vector_update<<<grid, block>>>(d_vector, d_update, learning_rate, size);
+  // Check alignment of both pointers used in vectorized operations
+  if (check_alignment(d_vector, size) && check_alignment(d_update, size)) {
+    vectorized_vector_update<<<grid, block>>>(d_vector, d_update, learning_rate, size);
+  } else {
+    non_vectorized_vector_update<<<grid, block>>>(d_vector, d_update, learning_rate, size);
+  }
   
   CUDA_CHECK_MANAGER(cudaGetLastError());
 }
@@ -334,7 +378,7 @@ inline void launch_backward_bias(float* d_b, float* d_derivatives, float* d_grad
 }
 
 /* ACTIVATION FUNCTION KERNELS */
-// Launch activation_tanh kernel
+// Launch activation_tanh kernel (automatically chooses vectorized or non-vectorized based on alignment)
 inline void launch_activation_tanh(float* d_value, int size) {
   const int THREADS_PER_BLOCK = 256;
   int num_blocks = (size + THREADS_PER_BLOCK - 1) / THREADS_PER_BLOCK;
@@ -342,11 +386,16 @@ inline void launch_activation_tanh(float* d_value, int size) {
   dim3 grid(num_blocks);
   dim3 block(THREADS_PER_BLOCK);
   
-  activation_tanh<<<grid, block>>>(d_value, size);
+  // Check alignment and choose appropriate kernel
+  if (check_alignment(d_value, size)) {
+    vectorized_activation_tanh<<<grid, block>>>(d_value, size);
+  } else {
+    non_vectorized_activation_tanh<<<grid, block>>>(d_value, size);
+  }
   CUDA_CHECK_MANAGER(cudaGetLastError());
 }
 
-// Launch activation_relu kernel
+// Launch activation_relu kernel (automatically chooses vectorized or non-vectorized based on alignment)
 inline void launch_activation_relu(float* d_value, int size) {
   const int THREADS_PER_BLOCK = 256;
   int num_blocks = (size + THREADS_PER_BLOCK - 1) / THREADS_PER_BLOCK;
@@ -354,11 +403,16 @@ inline void launch_activation_relu(float* d_value, int size) {
   dim3 grid(num_blocks);
   dim3 block(THREADS_PER_BLOCK);
   
-  activation_relu<<<grid, block>>>(d_value, size);
+  // Check alignment and choose appropriate kernel
+  if (check_alignment(d_value, size)) {
+    vectorized_activation_relu<<<grid, block>>>(d_value, size);
+  } else {
+    non_vectorized_activation_relu<<<grid, block>>>(d_value, size);
+  }
   CUDA_CHECK_MANAGER(cudaGetLastError());
 }
 
-// Launch backward_tanh kernel
+// Launch backward_tanh kernel (automatically chooses vectorized or non-vectorized based on alignment)
 inline void launch_backward_tanh(float* d_value, float* d_derivatives, float* d_grad, int size) {
   const int THREADS_PER_BLOCK = 256;
   int num_blocks = (size + THREADS_PER_BLOCK - 1) / THREADS_PER_BLOCK;
@@ -366,12 +420,19 @@ inline void launch_backward_tanh(float* d_value, float* d_derivatives, float* d_
   dim3 grid(num_blocks);
   dim3 block(THREADS_PER_BLOCK);
   
-  backward_tanh<<<grid, block>>>(d_value, d_derivatives, d_grad, size);
+  // Check alignment of all pointers used in vectorized operations
+  if (check_alignment(d_value, size) && 
+      check_alignment(d_derivatives, size) && 
+      check_alignment(d_grad, size)) {
+    vectorized_backward_tanh<<<grid, block>>>(d_value, d_derivatives, d_grad, size);
+  } else {
+    non_vectorized_backward_tanh<<<grid, block>>>(d_value, d_derivatives, d_grad, size);
+  }
   CUDA_CHECK_MANAGER(cudaGetLastError());
   
 }
 
-// Launch backward_relu kernel
+// Launch backward_relu kernel (automatically chooses vectorized or non-vectorized based on alignment)
 inline void launch_backward_relu(float* d_value, float* d_derivatives, float* d_grad, int size) {
   const int THREADS_PER_BLOCK = 256;
   int num_blocks = (size + THREADS_PER_BLOCK - 1) / THREADS_PER_BLOCK;
@@ -379,22 +440,24 @@ inline void launch_backward_relu(float* d_value, float* d_derivatives, float* d_
   dim3 grid(num_blocks);
   dim3 block(THREADS_PER_BLOCK);
   
-  backward_relu<<<grid, block>>>(d_value, d_derivatives, d_grad, size);
+  // Check alignment of all pointers used in vectorized operations
+  if (check_alignment(d_value, size) && 
+      check_alignment(d_derivatives, size) && 
+      check_alignment(d_grad, size)) {
+    vectorized_backward_relu<<<grid, block>>>(d_value, d_derivatives, d_grad, size);
+  } else {
+    non_vectorized_backward_relu<<<grid, block>>>(d_value, d_derivatives, d_grad, size);
+  }
   CUDA_CHECK_MANAGER(cudaGetLastError());
   
 }
 
-// Launch backward_linear kernel
+// Launch backward_linear - optimized using memcpy (linear activation has identity derivative)
+// For linear activation: grad = derivatives (no computation needed, just copy)
 inline void launch_backward_linear(float* d_value, float* d_derivatives, float* d_grad, int size) {
-  const int THREADS_PER_BLOCK = 256;
-  int num_blocks = (size + THREADS_PER_BLOCK - 1) / THREADS_PER_BLOCK;
-  
-  dim3 grid(num_blocks);
-  dim3 block(THREADS_PER_BLOCK);
-  
-  backward_linear<<<grid, block>>>(d_value, d_derivatives, d_grad, size);
-  CUDA_CHECK_MANAGER(cudaGetLastError());
-  
+  // Linear activation backward pass is just copying derivatives to grad
+  // This is more efficient than launching a kernel for a simple memory copy
+  copy_device_to_device(d_grad, d_derivatives, size);
 }
 
 /* SOFTMAX KERNELS */

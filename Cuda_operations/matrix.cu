@@ -1,7 +1,11 @@
+#include "utils.cu"
+
 #include <stdio.h>
+#include <assert.h>
 /* WEIGHTS KERNELS */
 
-/* MATRIX-VECTOR MULTIPLICATION KERNEL */
+/* NAIVE
+MATRIX-VECTOR MULTIPLICATION KERNEL
 __global__ void I_W_B_multiplication(float *d_w, float *d_input_values, float *d_b, float *d_result, int output_size, int input_size) {
   int row = blockIdx.x * blockDim.x + threadIdx.x;
   
@@ -14,14 +18,97 @@ __global__ void I_W_B_multiplication(float *d_w, float *d_input_values, float *d
   }
 
 } 
+*/
 
-/* VECTOR UPDATE KERNEL */
-// Fixed: Direct memory access without problematic reinterpret_cast pattern
-__global__ void vector_update(float *V, float *U, float learning_rate, int size) {
-  int idx = blockIdx.x * blockDim.x + threadIdx.x;
+/* VECTORIZED SGEMV KERNEL */
+// Weights size = M x K
+// Input size = K
+__global__ void SGEMV(float *w, float *in, float *res, float *bias, int K, int M){
+  extern __shared__ float smem[];
+
+  int row = blockIdx.x;
+  if(row >= M) return;
+
+  int tid = threadIdx.x;
+
+  int K4 = K / 4;
+  int ceil_K4 = (K+3) / 4;
   
-  if (idx < size) {
-    V[idx] -= learning_rate * U[idx];
+  float sum = 0.0f;
+  float4* w4 = reinterpret_cast<float4*>(w + row * K);
+  float4* in4 = reinterpret_cast<float4*>(in);
+
+  for(int i = tid; i < ceil_K4; i += blockDim.x){
+    if(i < K4){
+      float4 w_val = w4[i];
+      float4 in_val = in4[i];
+
+      sum += w_val.x * in_val.x + w_val.y * in_val.y + w_val.z * in_val.z + w_val.w * in_val.w;
+    }
+    else if(i*4 < K){
+      float wx = 0.0f, wy = 0.0f, wz = 0.0f;
+      float ix = 0.0f, iy = 0.0f, iz = 0.0f;
+
+      wx = w[(row*K) + i*4];
+      ix = in[i*4];
+
+      if(i*4+2 < K){
+        wy = w[(row*K) + i*4+1];
+        iy = in[i*4+1];
+        wz = w[(row*K) + i*4+2];
+        iz = in[i*4+2];
+      }
+      else if(i*4+1 < K){
+        wy = w[(row*K) + i*4+1];
+        iy = in[i*4+1];
+      }
+
+      sum += wx * ix + wy * iy + wz * iz;
+    }
+    else break;
+  }
+
+  block_reduce_sum(sum, smem, tid, blockDim.x);
+
+  if(tid == 0) res[row] = smem[0] + bias[row];
+}
+
+/* VECTORIZED VECTOR UPDATE KERNEL */
+__global__ void vectorized_vector_update(float *V, float *U, float learning_rate, int size) {
+  int tid = blockIdx.x * blockDim.x + threadIdx.x;
+  int stride = blockDim.x * gridDim.x;
+
+  int size4 = size / 4;
+
+  // Cast the pointer to float4
+  float4 *V4 = reinterpret_cast<float4*>(V);
+  float4 *U4 = reinterpret_cast<float4*>(U);
+
+  // Process full float4 elements
+  for (int i = tid; i < size4; i += stride) {
+    float4 v = V4[i];
+    float4 u = U4[i];
+    v.x -= learning_rate * u.x;
+    v.y -= learning_rate * u.y;
+    v.z -= learning_rate * u.z;
+    v.w -= learning_rate * u.w;
+    V4[i] = v;
+  }
+
+  // Handle remaining tail elements
+  int tail_start = size4 * 4;
+  if(tid < (size - tail_start)) {
+    float v = V[tid + tail_start];
+    float u = U[tid + tail_start];
+    v -= learning_rate * u;
+    V[tid + tail_start] = v;
+  }
+}
+
+__global__ void non_vectorized_vector_update(float *V, float *U, float learning_rate, int size) {
+  int idx = blockIdx.x * blockDim.x + threadIdx.x;
+  for(int i = idx; i < size; i += blockDim.x*gridDim.x){
+    V[i] -= learning_rate * U[i];
   }
 }
 
@@ -45,205 +132,5 @@ __global__ void backward_bias(float *d_b, float *d_derivatives, float *d_grad_b,
   int row = blockIdx.x * blockDim.x + threadIdx.x;
   if (row < output_size) {
     atomicAdd(d_grad_b + row, d_derivatives[row]);
-  }
-}
-
-/* ACTIVATION FUNCTION KERNELS */
-// Forward pass
-__global__ void activation_tanh(float *V, int size) {
-  int idx = blockIdx.x * blockDim.x + threadIdx.x;
-  
-  if (idx < size) {
-    V[idx] = tanh(V[idx]);
-  }
-}
-
-__global__ void activation_relu(float *V, int size) {
-  int idx = blockIdx.x * blockDim.x + threadIdx.x;
-  
-  if (idx < size) {
-    V[idx] = fmaxf(0.0f, V[idx]);
-  }
-}
-
-// Backward pass
-__global__ void backward_tanh(float *V, float *derivatives, float *grad, int size) {
-  int idx = blockIdx.x * blockDim.x + threadIdx.x;
-  
-  if (idx < size) {
-    grad[idx] = derivatives[idx] * (1 - (V[idx]* V[idx]));
-  }
-}
-
-__global__ void backward_relu(float *V, float *derivatives, float *grad, int size) {
-  int idx = blockIdx.x * blockDim.x + threadIdx.x;
-  
-  if (idx < size) {
-    grad[idx] = derivatives[idx] * (V[idx] > 0 ? 1 : 0);
-  }
-} 
-
-__global__ void backward_linear(float *V, float *derivatives, float *grad, int size) {
-  int idx = blockIdx.x * blockDim.x + threadIdx.x;
-  
-  if (idx < size) {
-    grad[idx] = derivatives[idx];
-  }
-}
-
-/* SOFTMAX KERNELS */
-// Kernel to compute dot product for backward pass
-__global__ void softmax_dot_product_kernel(float *d_value, float *d_derivatives, float *d_dot, int size) {
-  __shared__ float shared_dot[256];
-  
-  int idx = blockIdx.x * blockDim.x + threadIdx.x;
-  int tid = threadIdx.x;
-  
-  float dot_val = 0.0f;
-  if (idx < size) {
-    dot_val = d_value[idx] * d_derivatives[idx];
-  }
-  
-  shared_dot[tid] = dot_val;
-  __syncthreads();
-  
-  // Reduction in shared memory
-  for (int stride = blockDim.x / 2; stride > 0; stride >>= 1) {
-    if (tid < stride) {
-      shared_dot[tid] += shared_dot[tid + stride];
-    }
-    __syncthreads();
-  }
-  
-  // Write block result to global memory
-  if (tid == 0) {
-    atomicAdd(d_dot, shared_dot[0]);
-  }
-}
-
-// Kernel to compute backward gradient
-__global__ void softmax_backward_kernel(float *d_value, float *d_derivatives, float *d_grad, float *d_dot, float temperature, int size) {
-  int idx = blockIdx.x * blockDim.x + threadIdx.x;
-  
-  float dot = *d_dot;
-  
-  if (idx < size) {
-    d_grad[idx] = d_value[idx] * (d_derivatives[idx] - dot) / temperature;
-  }
-}
-
-/* LOSS KERNELS */
-/* REDUCTION KERNEL FOR LOSS COMPUTATION */
-// Parallel reduction to sum array elements
-__global__ void reduce_sum_kernel(float *d_input, float *d_output, int size) {
-  __shared__ float shared_sum[256];
-  
-  int idx = blockIdx.x * blockDim.x + threadIdx.x;
-  int tid = threadIdx.x;
-  
-  // Initialize shared memory with input values or 0
-  shared_sum[tid] = (idx < size) ? d_input[idx] : 0.0f;
-  __syncthreads();
-  
-  // Reduction in shared memory
-  for (int stride = blockDim.x / 2; stride > 0; stride >>= 1) {
-    if (tid < stride) {
-      shared_sum[tid] += shared_sum[tid + stride];
-    }
-    __syncthreads();
-  }
-  
-  // Write block result to global memory
-  if (tid == 0) {
-    atomicAdd(d_output, shared_sum[0]);
-  }
-}
-
-/* MSE LOSS KERNELS */
-// Forward pass: compute MSE loss contributions per element
-// Note: This stores the squared error in d_grad for now
-// The actual loss value should be computed separately by summing and averaging
-__global__ void mse_loss_kernel(float *d_predictions, float *d_target, float *d_grad, int size) {
-  int idx = blockIdx.x * blockDim.x + threadIdx.x;
-  
-  if (idx < size) {
-    float diff = d_predictions[idx] - d_target[idx];
-    // Store squared error (will be used to compute loss value if needed)
-    d_grad[idx] = diff * diff;
-  }
-}
-
-// Backward pass: compute gradient with respect to predictions (with incoming derivatives)
-__global__ void backward_mse_loss_kernel(float *d_predictions, float *d_target, float *d_derivatives, float *d_grad, int size) {
-  int idx = blockIdx.x * blockDim.x + threadIdx.x;
-  
-  if (idx < size) {
-    // MSE gradient: (2 / n) * (prediction - target)
-    // Matches CPU implementation at line 172 in mse_loss.h
-    d_grad[idx] = (2.0f / size) * (d_predictions[idx] - d_target[idx]) * d_derivatives[idx];
-  }
-}
-
-// Backward pass: simplified version assuming derivatives = 1.0 (standard case)
-__global__ void backward_mse_loss_kernel_simple(float *d_predictions, float *d_target, float *d_grad, int size) {
-  int idx = blockIdx.x * blockDim.x + threadIdx.x;
-  
-  if (idx < size) {
-    // When derivative of loss w.r.t. itself is 1.0, gradient is: (2 / n) * (prediction - target)
-    d_grad[idx] = (2.0f / size) * (d_predictions[idx] - d_target[idx]);
-  }
-}
-
-/* ONE-HOT ENCODING KERNEL */
-// Kernel to write one-hot encoding directly to device memory
-// Sets all elements to 0.0 except the target_index which is set to 1.0
-__global__ void one_hot_encoding_kernel(float *d_target, int target_index, int size) {
-  int idx = blockIdx.x * blockDim.x + threadIdx.x;
-  
-  if (idx < size) {
-    d_target[idx] = (idx == target_index) ? 1.0f : 0.0f;
-  }
-}
-
-/* CROSS ENTROPY LOSS KERNELS */
-// Forward pass: compute cross entropy loss contributions per element
-// Note: This stores the loss contribution in d_grad
-__global__ void cross_entropy_loss_kernel(float *d_predictions, float *d_target, float *d_grad, int size) {
-  int idx = blockIdx.x * blockDim.x + threadIdx.x;
-  
-  if (idx < size) {
-    // Cross entropy: -target * log(prediction + epsilon)
-    // Add small epsilon to avoid log(0), matches CPU epsilon of 1e-15f
-    float epsilon = 1e-15f;
-    float loss_contrib = 0.0f;
-    
-    if (d_target[idx] > 0) {
-      loss_contrib = -d_target[idx] * logf(d_predictions[idx] + epsilon);
-    }
-    
-    // Store loss contribution
-    d_grad[idx] = loss_contrib;
-  }
-}
-
-// Backward pass: compute gradient with respect to predictions (with incoming derivatives)
-__global__ void backward_cross_entropy_loss_kernel(float *d_predictions, float *d_target, float *d_derivatives, float *d_grad, int size) {
-  int idx = blockIdx.x * blockDim.x + threadIdx.x;
-  
-  if (idx < size) {
-    // Simplified cross entropy gradient (when combined with softmax): (predictions - targets)
-    // This is the beautiful mathematical simplification that occurs when you combine
-    // softmax activation with cross-entropy loss
-    // Matches CPU implementation at line 186 in cross_entropy_loss.h
-    d_grad[idx] = (d_predictions[idx] - d_target[idx]) * d_derivatives[idx];
-  }
-}
-
-// Backward pass: simplified version assuming derivatives = 1.0 (standard case)
-__global__ void backward_cross_entropy_loss_kernel_simple(float *d_predictions, float *d_target, float *d_grad, int size) {
-  int idx = blockIdx.x * blockDim.x + threadIdx.x;
-  if (idx < size) {
-    // When derivative of loss w.r.t. itself is 1.0, gradient is simply: predictions - targets
-    d_grad[idx] = d_predictions[idx] - d_target[idx];
   }
 }

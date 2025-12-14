@@ -30,5 +30,8 @@ This project is a learning exercise to bridge the gap between theoretical unders
 - [Understanding the difficulty of training deep feedforward neural networks](https://proceedings.mlr.press/v9/glorot10a/glorot10a.pdf)
 - [How to Optimize a CUDA Matmul Kernel for cuBLAS-like Performance: a Worklog](https://siboehm.com/articles/22/CUDA-MMM)
 - [Learning CUDA by optimizing softmax: A worklog](https://maharshi.bearblog.dev/optimizing-softmax-cuda/)
+- [Learning CUDA by optimizing matrix-vector multiplication (SGEMV) for cuBLAS-like performance - A worklog](https://maharshi.bearblog.dev/optimizing-sgemv-cuda/)
+- [Restrict keyword](https://en.wikipedia.org/wiki/Restrict)
+
 
 A special thanks to chatgpt and claude for helping debugging the code.

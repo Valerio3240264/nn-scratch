@@ -107,7 +107,7 @@ float *cuda_weights::grad_bias_pointer(){
 void cuda_weights::operator()(BackwardClass *in, float *output_pointer){
   this->d_input_values = in->values_pointer();
   this->pred = in;
-  launch_I_W_B_multiplication(this->d_w, this->d_input_values, this->d_b, output_pointer, this->output_size, this->input_size);
+  launch_SGEMV(this->d_w, this->d_input_values, this->d_b, output_pointer, this->output_size, this->input_size);
   return;
 }
 
