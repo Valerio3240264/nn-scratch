@@ -1,3 +1,5 @@
+#include "utils.cu"
+
 /* SOFTMAX KERNELS */
 // FORWARD PASS
 __global__ void vector_softmax_kernel(float *d_value, float temperature, int size){
@@ -62,42 +64,21 @@ __global__ void vector_softmax_kernel(float *d_value, float temperature, int siz
   }
 }
 
-// Kernel to compute dot product for backward pass
-__global__ void softmax_dot_product_kernel(float *d_value, float *d_derivatives, float *d_dot, int size) {
-  __shared__ float shared_dot[256];
+__global__ void softmax_backward_kernel(float *d_value, float *d_derivatives, float *d_grad, float *d_dot, float temperature, int size){
+  extern __shared__ float shared_dot[];
   
-  int idx = blockIdx.x * blockDim.x + threadIdx.x;
   int tid = threadIdx.x;
-  
-  float dot_val = 0.0f;
-  if (idx < size) {
-    dot_val = d_value[idx] * d_derivatives[idx];
+  float dot = 0.0f;
+  for(int i = tid; i < size; i += blockDim.x){
+    dot += d_value[i] * d_derivatives[i];
   }
-  
-  shared_dot[tid] = dot_val;
-  __syncthreads();
-  
-  // Reduction in shared memory
-  for (int stride = blockDim.x / 2; stride > 0; stride >>= 1) {
-    if (tid < stride) {
-      shared_dot[tid] += shared_dot[tid + stride];
-    }
-    __syncthreads();
-  }
-  
-  // Write block result to global memory
-  if (tid == 0) {
-    atomicAdd(d_dot, shared_dot[0]);
-  }
-}
 
-// Kernel to compute backward gradient
-__global__ void softmax_backward_kernel(float *d_value, float *d_derivatives, float *d_grad, float *d_dot, float temperature, int size) {
-  int idx = blockIdx.x * blockDim.x + threadIdx.x;
-  
-  float dot = *d_dot;
-  
-  if (idx < size) {
-    d_grad[idx] = d_value[idx] * (d_derivatives[idx] - dot) / temperature;
+  block_reduce_sum(dot, shared_dot, tid, blockDim.x);
+
+  dot = shared_dot[0];
+
+  for(int i = tid; i < size; i += blockDim.x){
+    d_grad[i] = d_value[i] * (d_derivatives[i] - dot) / temperature;
   }
+  
 }

@@ -20,7 +20,7 @@ class cuda_softmax: public SoftmaxClass{
     float *d_grad;
     float *d_max;        // Persistent buffer for max value in forward pass (legacy - not used by new kernel)
     float *d_exp_sum;    // Persistent buffer for exp sum in forward pass (legacy - not used by new kernel)
-    float *d_dot;        // Persistent buffer for dot product in backward pass
+    float *d_dot;        // Persistent buffer for dot product in backward pass (legacy - not used by new kernel)
     int size;
     float temperature;
     BackwardClass *pred;
@@ -187,7 +187,7 @@ void cuda_softmax::copy_values(float *value){
 /* METHODS */
 // Backward pass
 void cuda_softmax::backward(float *derivatives){
-  launch_softmax_backward(this->d_value, derivatives, this->d_grad, this->temperature, this->size, this->d_dot);
+  launch_softmax_backward(this->d_value, derivatives, this->d_grad, this->temperature, this->size);
   
   if(this->pred){
     this->pred->backward(this->d_grad);

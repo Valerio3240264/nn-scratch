@@ -139,6 +139,7 @@ void cross_entropy_loss::operator()(int target_index) {
   if(this->target != nullptr) {
     delete[] this->target;
   }
+  
   this->target = new float[this->size];
   for(int i = 0; i < this->size; i++) {
     this->target[i] = (i == target_index) ? 1.0f : 0.0f;

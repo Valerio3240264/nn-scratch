@@ -121,8 +121,10 @@ void cuda_weights::zero_grad(){
 void cuda_weights::backward(float *derivatives){
   zero_device_memory(this->d_input_grad_buffer, this->input_size);
   
-  launch_backward_W(this->d_w, this->d_input_values, derivatives, this->d_grad_w, this->d_input_grad_buffer, this->output_size, this->input_size);
-  launch_backward_bias(this->d_b, derivatives, this->d_grad_b, this->output_size);
+  // Use optimized tiled kernel that computes weight gradients, input gradients, and bias gradients in one pass
+  launch_tiled_backward_Weights(this->d_w, this->d_input_values, derivatives, 
+                                this->d_grad_w, this->d_input_grad_buffer, this->d_grad_b, 
+                                this->output_size, this->input_size);
   
   this->pred->backward(this->d_input_grad_buffer);
 }

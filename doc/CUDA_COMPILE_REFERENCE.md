@@ -1,15 +1,13 @@
 # CUDA Compilation Reference
 
-### File Organization
+## Prerequisites
+- Install Ubuntu on your machine
+- Install CUDA toolkit
 
-```
-Cuda_operations/
-├── activation.cu    - All activation function kernels (vectorized + non-vectorized)
-├── matrix.cu        - SGEMV, vector_update, backward_W, backward_bias, loss kernels
-├── softmax.cu       - Softmax forward pass kernel
-├── utils.cu         - Warp and block reduction utilities
-└── loss.cu          - (Currently empty)
-```
+## Project Folders
+- **build**: holds intermediate object files produced during compilation (e.g., `matrix.o`, `test_cuda_weights.o`). Safe to delete; recreated on next build.
+- **bin**: contains final executables you run (e.g., `test_cuda_weights` or `test_cuda_weights.exe`).
+- **test**: contains test sources (e.g., `test/test_cuda_weights.cu`) that verify correctness and performance.
 
 ### Compilation Commands
 
@@ -28,17 +26,5 @@ nvcc -std=c++17 -O2 -use_fast_math -rdc=true -I. -c Cuda_operations/utils.cu -o 
 nvcc -std=c++17 -O2 -use_fast_math -rdc=true -I. -c test/test_mnist_gpu.cu -o build/test_mnist_gpu.o
 
 # Link all together
-nvcc -std=c++17 -O2 -use_fast_math -rdc=true build/test_mnist_gpu.o build/activation.o build/loss.o build/matrix.o build/softmax.o build/utils.o -lcurand -lcublas -o bin/test_mnist_gpu
-```
-
-#### One-liner (Quick Build)
-
-**Linux/WSL:**
-```bash
-nvcc -std=c++17 -O2 -rdc=true -I. test/test_mnist_gpu.cu Cuda_operations/activation.cu Cuda_operations/matrix.cu Cuda_operations/softmax.cu -o bin/test_mnist_gpu
-```
-
-**Windows:**
-```powershell
-nvcc -std=c++17 -O2 -rdc=true -I. test\test_mnist_gpu.cu Cuda_operations\activation.cu Cuda_operations\matrix.cu Cuda_operations\softmax.cu -o bin\test_mnist_gpu.exe
+nvcc -std=c++17 -O2 -use_fast_math -rdc=true build/test_mnist_gpu.o build/activation.o build/loss.o build/matrix.o build/softmax.o build/utils.o -lcurand -o bin/test_mnist_gpu
 ```

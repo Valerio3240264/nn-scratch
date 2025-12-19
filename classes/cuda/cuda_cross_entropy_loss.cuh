@@ -21,6 +21,7 @@ class cuda_cross_entropy_loss : public LossClass {
     float *target;
     float *grad;
     float loss_value;
+    float *d_loss_sum;
     int size;
     bool has_target;  // Track if we have a target
     bool owns_target; // Track if we own the target memory
@@ -59,6 +60,7 @@ cuda_cross_entropy_loss::cuda_cross_entropy_loss(BackwardClass *pred, int size) 
   this->owns_target = true;  
   allocate_device_memory<float>(&this->target, size);
   allocate_device_memory_zeros<float>(&this->grad, size);
+  allocate_device_memory_zeros<float>(&this->d_loss_sum, 1);
 }
 
 // Constructor - sets the predecessor pointer and target
@@ -72,6 +74,7 @@ cuda_cross_entropy_loss::cuda_cross_entropy_loss(BackwardClass *pred, int size, 
   this->has_target = true;
   this->owns_target = false;
   allocate_device_memory_zeros<float>(&this->grad, size);
+  allocate_device_memory_zeros<float>(&this->d_loss_sum, 1);
 }
 
 /* DESTRUCTOR */
@@ -80,6 +83,7 @@ cuda_cross_entropy_loss::~cuda_cross_entropy_loss() {
   if (this->owns_target) {
     free_device_memory(this->target);
   }
+  free_device_memory(this->d_loss_sum);
 }
 
 /* GETTERS */
@@ -125,14 +129,9 @@ void cuda_cross_entropy_loss::operator()(){
     throw std::invalid_argument("No target set for forward pass");
   }
 
-  float *predictions = this->pred->values_pointer();
-  launch_cross_entropy_loss_kernel(this->pred->values_pointer(), this->target, this->grad, this->size);
-  
-  float *d_loss_sum = nullptr;
-  allocate_device_memory_zeros<float>(&d_loss_sum, 1);
-  launch_reduce_sum(this->grad, d_loss_sum, this->size);
-  copy_device_to_host<float>(&this->loss_value, d_loss_sum, 1);
-  free_device_memory(d_loss_sum);
+  zero_device_memory(this->d_loss_sum, 1);
+  launch_softmax_cross_entropy_loss_kernel(this->pred->values_pointer(), this->target, this->grad, this->d_loss_sum, this->size);
+  copy_device_to_host<float>(&this->loss_value, this->d_loss_sum, 1);
 }
 
 // Zero the gradient

@@ -112,25 +112,53 @@ __global__ void non_vectorized_vector_update(float *V, float *U, float learning_
   }
 }
 
-__global__ void backward_W(float *d_w, float *d_input_values, float *d_derivatives, float *d_grad_w, float *d_prevGrad, int output_size, int input_size){
-  // Map thread x -> col, y -> row
-  int col = blockIdx.x * blockDim.x + threadIdx.x;
-  int row = blockIdx.y * blockDim.y + threadIdx.y;
+const int TILE_SIZE = 16;
 
-  if (col < input_size && row < output_size) {
-    int idx = row * input_size + col;
-    float d_row = d_derivatives[row];
-    float contrib_gradw = d_row * d_input_values[col];
-    float contrib_prev = d_row * d_w[idx];
+__global__ void tiled_backward_Weights(float *d_w, float *d_In, float *d_derivatives, 
+                                       float *d_grad_w, float *d_InGrad, float *d_biasGrad, 
+                                       int output_size, int input_size){
+  __shared__ float smem[TILE_SIZE][TILE_SIZE];
 
-    atomicAdd(d_grad_w + idx, contrib_gradw);
-    atomicAdd(d_prevGrad + col, contrib_prev);
+  int tile_col = blockIdx.x;
+  int tidx = threadIdx.x;
+  int tidy = threadIdx.y;
+  
+  int col = tile_col * TILE_SIZE + tidx;
+
+  if(col < input_size){
+    float value = 0.0f;
+    float input_val = d_In[col];
+
+    for(int tile_row = 0; tile_row < (output_size + TILE_SIZE - 1) / TILE_SIZE; tile_row++){
+      int row = tile_row * TILE_SIZE + tidy;
+      
+      if(row < output_size){
+        float deriv = d_derivatives[row];
+
+        value += deriv * d_w[row * input_size + col];
+        d_grad_w[row * input_size + col]+= deriv * input_val;
+      }
+    }
+    
+    smem[tidy][tidx] = value;
+    __syncthreads();
+
+    for(int stride = TILE_SIZE / 2; stride > 0; stride >>= 1){
+      if(tidy < stride){
+        smem[tidy][tidx] += smem[tidy + stride][tidx];
+      }
+      __syncthreads();
+    }
+
+    if(tidy == 0){
+      d_InGrad[col] = smem[0][tidx];
+    }
   }
-}
 
-__global__ void backward_bias(float *d_b, float *d_derivatives, float *d_grad_b, int output_size) {
-  int row = blockIdx.x * blockDim.x + threadIdx.x;
-  if (row < output_size) {
-    atomicAdd(d_grad_b + row, d_derivatives[row]);
+  if(tile_col == gridDim.x - 1){
+    int tid = tidy * blockDim.x + tidx;
+    for(int i = tid; i < output_size; i += TILE_SIZE * TILE_SIZE){
+      d_biasGrad[i] += d_derivatives[i];
+    }
   }
 }
