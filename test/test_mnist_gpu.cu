@@ -9,9 +9,11 @@
 #include <cuda_runtime.h>
 #include <chrono>
 
-#include "../classes/cuda/cuda_input.cuh"
+#include "../classes/cuda/cuda_manager.cuh"
+#include "../classes/cuda/cuda_manager_impl.cuh"
+#include "../classes/cuda/headers/cuda_input.cuh"
 #include "../classes/enums.h"
-#include "../classes/mlp.h"
+#include "../classes/mlp/headers/mlp.h"
 #include "../classes/virtual_classes.h"
 
 /* PURPOSE OF THE FILE:

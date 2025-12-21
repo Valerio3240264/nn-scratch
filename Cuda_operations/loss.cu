@@ -2,7 +2,7 @@
 
 /* MSE LOSS KERNELS */
 // Forward pass: compute MSE loss contributions per element
-__global__ void mse_loss_kernel(float *d_predictions, float *d_target, float *d_grad, float *d_loss_sum, int size) {
+__global__ void mse_loss_kernel(float *__restrict__ d_predictions, float *__restrict__ d_target, float *__restrict__ d_grad, float *d_loss_sum, int size) {
   extern __shared__ float shared_loss_sum[];
 
   int idx = blockIdx.x * blockDim.x + threadIdx.x;
@@ -32,7 +32,7 @@ __global__ void mse_loss_kernel(float *d_predictions, float *d_target, float *d_
 }
 
 // Backward pass: compute gradient with respect to predictions (with incoming derivatives)
-__global__ void backward_mse_loss_kernel(float *d_predictions, float *d_target, float *d_derivatives, float *d_grad, int size) {
+__global__ void backward_mse_loss_kernel(float *__restrict__ d_predictions, float *__restrict__ d_target, float *__restrict__ d_derivatives, float *__restrict__ d_grad, int size) {
   int idx = blockIdx.x * blockDim.x + threadIdx.x;
   int stride = blockDim.x * gridDim.x;
   for(int i = idx; i < size; i += stride) {
@@ -41,7 +41,7 @@ __global__ void backward_mse_loss_kernel(float *d_predictions, float *d_target, 
 }
 
 // Backward pass: simplified version assuming derivatives = 1.0 (standard case)
-__global__ void backward_mse_loss_kernel_simple(float *d_predictions, float *d_target, float *d_grad, int size) {
+__global__ void backward_mse_loss_kernel_simple(float *__restrict__ d_predictions, float *__restrict__ d_target, float *__restrict__ d_grad, int size) {
   int idx = blockIdx.x * blockDim.x + threadIdx.x;
   int stride = blockDim.x * gridDim.x;
   for(int i = idx; i < size; i += stride) {
@@ -51,7 +51,7 @@ __global__ void backward_mse_loss_kernel_simple(float *d_predictions, float *d_t
 
 /* ONE-HOT ENCODING KERNEL */
 // Kernel to write one-hot encoding
-__global__ void one_hot_encoding_kernel(float *d_target, int target_index, int size) {
+__global__ void one_hot_encoding_kernel(float *__restrict__ d_target, int target_index, int size) {
   int idx = blockIdx.x * blockDim.x + threadIdx.x;
   int stride = blockDim.x * gridDim.x;
   for(int i = idx; i < size; i += stride) {
@@ -62,7 +62,7 @@ __global__ void one_hot_encoding_kernel(float *d_target, int target_index, int s
 /* CROSS ENTROPY LOSS KERNELS */
 // Forward pass: compute cross entropy loss contributions per element
 // This kernel can only be used if the previous layer is a softmax layer
-__global__ void softmax_cross_entropy_loss_kernel(float *d_predictions, float *d_target, float *d_grad, float *d_loss_sum, int size) {
+__global__ void softmax_cross_entropy_loss_kernel(float *__restrict__ d_predictions, float *__restrict__ d_target, float *__restrict__ d_grad, float *d_loss_sum, int size) {
   extern __shared__ float shared_grad[];
 
   int idx = blockIdx.x * blockDim.x + threadIdx.x;
@@ -97,7 +97,7 @@ __global__ void softmax_cross_entropy_loss_kernel(float *d_predictions, float *d
 }
 
 // Backward pass: compute gradient with respect to predictions (with incoming derivatives)
-__global__ void backward_cross_entropy_loss_kernel(float *d_predictions, float *d_target, float *d_derivatives, float *d_grad, int size) {
+__global__ void backward_cross_entropy_loss_kernel(float *__restrict__ d_predictions, float *__restrict__ d_target, float *__restrict__ d_derivatives, float *__restrict__ d_grad, int size) {
   int idx = blockIdx.x * blockDim.x + threadIdx.x;
   int stride = blockDim.x * gridDim.x;
   for(int i = idx; i < size; i += stride) {   
@@ -106,7 +106,7 @@ __global__ void backward_cross_entropy_loss_kernel(float *d_predictions, float *
 }
 
 // Backward pass: simplified version assuming derivatives = 1.0 (standard case)
-__global__ void backward_cross_entropy_loss_kernel_simple(float *d_predictions, float *d_target, float *d_grad, int size) {
+__global__ void backward_cross_entropy_loss_kernel_simple(float *__restrict__ d_predictions, float *__restrict__ d_target, float *__restrict__ d_grad, int size) {
   int idx = blockIdx.x * blockDim.x + threadIdx.x;
   int stride = blockDim.x * gridDim.x;
   for(int i = idx; i < size; i += stride) {

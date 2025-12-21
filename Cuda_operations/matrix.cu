@@ -1,4 +1,4 @@
-#include "utils.cu"
+#include "utils.cuh"
 
 #include <stdio.h>
 #include <assert.h>
@@ -23,7 +23,7 @@ __global__ void I_W_B_multiplication(float *d_w, float *d_input_values, float *d
 /* VECTORIZED SGEMV KERNEL */
 // Weights size = M x K
 // Input size = K
-__global__ void SGEMV(float *w, float *in, float *res, float *bias, int K, int M){
+__global__ void SGEMV(float *__restrict__ w, float *__restrict__ in, float *__restrict__ res, float *__restrict__ bias, int K, int M){
   extern __shared__ float smem[];
 
   int row = blockIdx.x;
@@ -74,7 +74,7 @@ __global__ void SGEMV(float *w, float *in, float *res, float *bias, int K, int M
 }
 
 /* VECTORIZED VECTOR UPDATE KERNEL */
-__global__ void vectorized_vector_update(float *V, float *U, float learning_rate, int size) {
+__global__ void vectorized_vector_update(float *__restrict__ V, float *__restrict__ U, float learning_rate, int size) {
   int tid = blockIdx.x * blockDim.x + threadIdx.x;
   int stride = blockDim.x * gridDim.x;
 
@@ -105,7 +105,7 @@ __global__ void vectorized_vector_update(float *V, float *U, float learning_rate
   }
 }
 
-__global__ void non_vectorized_vector_update(float *V, float *U, float learning_rate, int size) {
+__global__ void non_vectorized_vector_update(float *__restrict__ V, float *__restrict__ U, float learning_rate, int size) {
   int idx = blockIdx.x * blockDim.x + threadIdx.x;
   for(int i = idx; i < size; i += blockDim.x*gridDim.x){
     V[i] -= learning_rate * U[i];
@@ -114,8 +114,8 @@ __global__ void non_vectorized_vector_update(float *V, float *U, float learning_
 
 const int TILE_SIZE = 16;
 
-__global__ void tiled_backward_Weights(float *d_w, float *d_In, float *d_derivatives, 
-                                       float *d_grad_w, float *d_InGrad, float *d_biasGrad, 
+__global__ void tiled_backward_Weights(float *__restrict__ d_w, float *__restrict__ d_In, float *__restrict__ d_derivatives, 
+                                       float *__restrict__ d_grad_w, float *__restrict__ d_InGrad, float *__restrict__ d_biasGrad, 
                                        int output_size, int input_size){
   __shared__ float smem[TILE_SIZE][TILE_SIZE];
 

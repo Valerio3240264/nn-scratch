@@ -8,9 +8,9 @@
 #include <vector>
 #include <chrono>
 
-#include "../classes/cpu/input.h"
+#include "../classes/cpu/headers/input.h"
 #include "../classes/enums.h"
-#include "../classes/mlp.h"
+#include "../classes/mlp/headers/mlp.h"
 #include "../classes/enums.h"
 #include "../classes/virtual_classes.h"
 

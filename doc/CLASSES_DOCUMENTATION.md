@@ -6,7 +6,7 @@ This documentation provides a comprehensive overview of all classes in the neura
 
 The neural network follows this computational flow:
 ```
-Input -> Weights -> Activation_function -> Layer -> MLP -> [Softmax (optional)] -> Loss
+Input -> Weights -> Activation -> Layer -> MLP -> [Softmax (optional)] -> Loss
 ```
 
 **Detailed Layer Flow:**
@@ -43,7 +43,7 @@ The backpropagation uses a graph-based approach where each component has a prede
 
 ## Core Virtual Interface
 
-### BackwardClass (virtual_classes.h)
+### BackwardClass (classes/virtual_classes.h)
 
 **PURPOSE:**
 Base interface for all layers that participate in the backpropagation algorithm. Provides a common interface for gradient computation and value management across all neural network components.
@@ -58,7 +58,7 @@ Base interface for all layers that participate in the backpropagation algorithm.
 
 ## Enumeration Types
 
-### Activation_name (enums.h)
+### Activation_name (classes/enums.h)
 
 **PURPOSE:**
 Defines available activation function types for the neural network.
@@ -70,7 +70,7 @@ Defines available activation function types for the neural network.
 - `SOFTMAX`: Softmax activation (for classification)
 - `LINEAR`: Linear activation (no transformation)
 
-### Loss_name (enums.h)
+### Loss_name (classes/enums.h)
 
 **PURPOSE:**
 Defines available loss function types for the neural network.
@@ -83,7 +83,7 @@ Defines available loss function types for the neural network.
 
 ## Input Management
 
-### input (input.h)
+### input (classes/cpu/headers/input.h)
 
 **PURPOSE:**
 This class is used to store an array of values and gradients that needs to be stored temporarily for the gradient evaluation on the neural network. The attribute pred will store the predecessor pointer and, in this way, call the backward method of the predecessor.
@@ -113,7 +113,7 @@ In the neural network it is used to link the layers together. Layer_i will call 
 
 ## Weight Management
 
-### weights (weights.h)
+### weights (classes/cpu/headers/weights.h)
 
 **PURPOSE:**
 This class is used to store the weights of a layer and perform the matrix multiplication between the weights and the input values. It also stores the gradients of the weights and the input values to perform the backward pass on the whole neural network.
@@ -143,10 +143,10 @@ This class is used to store the weights of a layer and perform the matrix multip
 
 ## Activation Functions
 
-### activation_function (activation_function.h)
+### activation (classes/cpu/headers/activation.h)
 
 **PURPOSE:**
-This class is used to store the values and gradients of the activation_function performed on the weighted sum of the previous layer. It also stores the name of the activation function and the predecessor pointer to perform the backward pass on the whole neural network. This class stores the values and when it is called it will apply the activation function to the values array.
+This class is used to store the values and gradients of the activation performed on the weighted sum of the previous layer. It also stores the name of the activation function and the predecessor pointer to perform the backward pass on the whole neural network. This class stores the values and when it is called it will apply the activation function to the values array.
 
 **Attributes:**
 - `size`: size of the values and gradients arrays
@@ -156,7 +156,7 @@ This class is used to store the values and gradients of the activation_function 
 - `function_name`: name of the activation function
 
 **Constructors:**
-- `activation_function(int size, double *value, Activation_name function_name, BackwardClass *pred)`: creates a new array for the values and gradients arrays and sets the predecessor to the passed pointer
+- `activation(int size, float *value, Activation_name function_name, BackwardClass *pred)`: creates a new array for the values and gradients arrays and sets the predecessor to the passed pointer
 
 **Methods:**
 - `values_pointer()`: returns the pointer to the values array
@@ -176,7 +176,7 @@ This class is used to store the values and gradients of the activation_function 
 
 ## Softmax Activation
 
-### softmax (softmax.h)
+### softmax (classes/cpu/headers/softmax.h)
 
 **PURPOSE:**
 This class implements the softmax activation function, commonly used as the final layer in multi-class classification problems. It converts raw scores (logits) into probabilities that sum to 1. The softmax is typically paired with cross-entropy loss for optimal training of classification networks.
@@ -213,19 +213,19 @@ This class implements the softmax activation function, commonly used as the fina
 
 ## Layer Implementation
 
-### layer (layer.h)
+### layer (classes/mlp/headers/layer.h)
 
 **PURPOSE:**
-This class is used to store the input(Input class), output(Activation_function class), weights(Weights class), input size, output size and activation function name of a layer.
+This class is used to store the input(Input class), output(Activation class), weights(Weights class), input size, output size and activation function name of a layer.
 
 **Architecture:**
 ```
-Input -> Weights -> Activation_function -> Output
+Input -> Weights -> Activation -> Output
 ```
 
 **Attributes:**
 - `in`: pointer to the input (Input class)
-- `out`: pointer to the output (Activation_function class)
+- `out`: pointer to the output (Activation class)
 - `W`: pointer to the weights (Weights class)
 - `input_size`: size of the input
 - `output_size`: size of the output
@@ -246,7 +246,7 @@ Input -> Weights -> Activation_function -> Output
 
 ## Multi-Layer Perceptron (MLP)
 
-### mlp (mlp.h)
+### mlp (classes/mlp/headers/mlp.h)
 
 **PURPOSE:**
 This class is used to store the layers, input size, output size and activation functions of a multi-layer perceptron. It supports different activation functions per layer and different loss functions (MSE, Cross-Entropy). The MLP can optionally include a softmax layer before the loss, which is recommended for classification tasks using cross-entropy loss.
@@ -297,7 +297,7 @@ The neural network implementation provides multiple loss functions for different
 
 ### MSE Loss
 
-#### mse_loss (mse_loss.h)
+#### mse_loss (classes/cpu/headers/mse_loss.h)
 
 **PURPOSE:**
 Mean Squared Error loss function specifically designed for regression tasks. Returns a scalar loss value (averaged over all outputs) rather than per-element losses. This is the recommended loss function for regression problems.
@@ -331,7 +331,7 @@ Mean Squared Error loss function specifically designed for regression tasks. Ret
 
 ### Cross-Entropy Loss
 
-#### cross_entropy_loss (cross_entropy_loss.h)
+#### cross_entropy_loss (classes/cpu/headers/cross_entropy_loss.h)
 
 **PURPOSE:**
 Cross-Entropy loss function for multi-class classification tasks. This is the standard loss function for classification problems and should be used with softmax activation. It provides numerically stable gradients and measures the KL divergence between predicted and true probability distributions.
@@ -365,160 +365,6 @@ Cross-Entropy loss function for multi-class classification tasks. This is the st
 - Backward (with softmax): `dL/dprediction[i] = prediction[i] - target[i]` (beautiful simplification!)
 
 **Note:** When combined with softmax, the gradient simplifies to `prediction - target`, which provides stable and efficient training for classification tasks.
-
----
-
-## TODO Items
-
-The following TODO items have been identified across the codebase for future development:
-
-### Input (input.h)
-1. Add batch representation
-
-### Activation Function (activation_function.h)
-1. Create a function to evaluate the output of a whole batch
-2. Create a function to evaluate the gradient of a whole batch
-
-### Layer (layer.h)
-1. Create functions to evaluate the output and gradient of a whole batch
-
-### Loss Functions (mse_loss.h and cross_entropy_loss.h)
-1. Write a backward function that does not need to know the derivatives value since it is the first step of the backward pass and the derivatives are known (✓ Partially completed in mse_loss and cross_entropy_loss)
-2. Create a function to evaluate the loss of a whole batch
-3. Create a function to evaluate the gradient of a whole batch
-4. Optimize the batch operations using personalized cuda kernels
-
-### Multi-Layer Perceptron (mlp.h)
-1. Create functions to evaluate the output and gradient of a whole batch
-2. Optimize the batch operations using personalized cuda kernels
-
-### Weights (weights.h)
-1. Create a function to evaluate to process a whole batch of data
-2. Create a function to evaluate the gradient of a whole batch
-
----
-
-## Usage Examples
-
-### Example 1: Classification with Cross-Entropy Loss (Recommended for Classification)
-
-```cpp
-// Create an MLP for MNIST digit classification (784 inputs -> 10 outputs)
-// Architecture: 784 -> 128 (RELU) -> 64 (RELU) -> 10 (LINEAR) -> Softmax -> Cross-Entropy
-int hidden_sizes[] = {128, 64};
-Activation_name activations[] = {RELU, RELU, LINEAR};
-mlp network(784, 10, 3, hidden_sizes, activations, CROSS_ENTROPY, true);
-
-// Create input data
-input* data = new input(784);
-// ... populate data with pixel values ...
-
-// Forward pass
-BackwardClass* output = network(data);
-
-// Compute loss and backward pass (using class index)
-int target_label = 7;  // The digit is 7
-network.compute_loss(target_label);
-
-// Update weights and reset gradients
-network.update(0.01);  // learning rate = 0.01
-network.zero_grad();
-network.zero_loss();   // reset accumulated loss
-
-// Get predictions
-int predicted_class = network.get_prediction();
-double confidence = network.get_prediction_probability(predicted_class);
-double loss = network.get_loss();
-```
-
-### Example 2: Regression with MSE Loss
-
-```cpp
-// Create an MLP for regression (10 inputs -> 1 output)
-int hidden_sizes[] = {64, 32};
-Activation_name activations[] = {RELU, RELU, LINEAR};
-mlp network(10, 1, 3, hidden_sizes, activations, MSE, false);
-
-// Create input data
-input* data = new input(10);
-// ... populate data ...
-
-// Forward pass
-BackwardClass* output = network(data);
-
-// Create target (regression target)
-double target[] = {42.5};
-
-// Compute loss and backward pass
-network.compute_loss(target);
-
-// Update weights
-network.update(0.001);
-network.zero_grad();
-network.zero_loss();
-
-double loss = network.get_loss();
-```
-
-### Example 3: Legacy Constructor (Backward Compatible)
-
-```cpp
-// All layers use the same activation function (RELU)
-// Uses MSE loss by default
-int hidden_sizes[] = {64, 32};
-mlp network(784, 10, 2, hidden_sizes, RELU);
-
-// Create input data
-input* data = new input(784);
-// ... populate data ...
-
-// Forward pass
-BackwardClass* output = network(data);
-
-// Create target
-double target[10] = {0, 0, 0, 1, 0, 0, 0, 0, 0, 0};  // one-hot encoded
-
-// Backward pass and update
-network.compute_loss(target);
-network.update(0.01);
-network.zero_grad();
-```
-
-### Example 4: Training Loop for Classification
-
-```cpp
-// Setup network
-int hidden_sizes[] = {128, 64};
-Activation_name activations[] = {RELU, RELU, LINEAR};
-mlp network(784, 10, 3, hidden_sizes, activations, CROSS_ENTROPY, true);
-
-// Training loop
-for (int epoch = 0; epoch < 10; epoch++) {
-    network.zero_loss();
-    
-    for (int i = 0; i < num_samples; i++) {
-        // Create input
-        input* data = new input(784);
-        // ... load sample i into data ...
-        
-        // Forward pass
-        network(data);
-        
-        // Backward pass with target label
-        int label = labels[i];
-        network.compute_loss(label);
-        
-        // Update weights
-        network.update(0.01);
-        network.zero_grad();
-        
-        delete data;
-    }
-    
-    double avg_loss = network.get_loss() / num_samples;
-    cout << "Epoch " << epoch << ", Loss: " << avg_loss << endl;
-}
-```
 
 ---
 

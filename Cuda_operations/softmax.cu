@@ -1,10 +1,10 @@
-#include "utils.cu"
+#include "utils.cuh"
 
 /* SOFTMAX KERNELS */
 // FORWARD PASS
-__global__ void vector_softmax_kernel(float *d_value, float temperature, int size){
+__global__ void vector_softmax_kernel(float *__restrict__ d_value, float temperature, int size){
   // SMEM declaration
-  __shared__ float smem[1024];
+  extern __shared__ float smem[];
   // Thread index
   int tid = threadIdx.x;
 
@@ -64,7 +64,7 @@ __global__ void vector_softmax_kernel(float *d_value, float temperature, int siz
   }
 }
 
-__global__ void softmax_backward_kernel(float *d_value, float *d_derivatives, float *d_grad, float *d_dot, float temperature, int size){
+__global__ void softmax_backward_kernel(float *__restrict__ d_value, float *__restrict__ d_derivatives, float *__restrict__ d_grad, float *__restrict__ d_dot, float temperature, int size){
   extern __shared__ float shared_dot[];
   
   int tid = threadIdx.x;
