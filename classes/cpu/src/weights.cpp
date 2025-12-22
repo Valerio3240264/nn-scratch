@@ -31,10 +31,10 @@ weights::weights(int input_size, int output_size){
   /*
     Experiments on the MNIST dataset with a 3 layer neural network (784 -> 128 -> 64 -> 10 -> softmax):
     With the same network configuration, using sqrt(6.0 / (input_size + output_size)) resulted in approximately 50% validation accuracy after 5 epochs.
-    In contrast, using scale = sqrt(1.0 / input_size) improved performance significantly, achieving around 95% validation accuracy in the same number of epochs.
-    This suggests that for this particular problem and network, the simpler sqrt(1.0 / input_size) initialization works better, highlighting the importance of empirical validation of initialization strategies.
+    In contrast, using scale = sqrt(2 .0 / input_size) improved performance significantly, achieving around 95% validation accuracy in the same number of epochs.
+    This suggests that for this particular problem and network, the simpler sqrt(2.0 / input_size) initialization works better, highlighting the importance of empirical validation of initialization strategies.
   */
-  float scale = sqrtf(1.0f / input_size);
+  float scale = sqrtf(2.0f / input_size);
   
   // Random number generator
   default_random_engine generator;

@@ -16,6 +16,9 @@ __global__ void tiled_backward_Weights(float *__restrict__ d_w, float *__restric
                                        float *__restrict__ d_grad_w, float *__restrict__ d_InGrad, float *__restrict__ d_biasGrad, 
                                        int output_size, int input_size);
 
+// Xavier initialization kernel
+__global__ void scale_xavier(float *__restrict__ d_data, int n, float scale);
+
 /* ACTIVATION FUNCTION KERNELS */
 // Vectorized forward pass
 __global__ void vectorized_activation_tanh(float *__restrict__ V, int size);

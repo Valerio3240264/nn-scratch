@@ -103,3 +103,14 @@ all: $(CPU_EXE) $(GPU_EXE)
 #-------------------------
 clean:
 	rm -rf $(BUILD_DIR)/*.o $(BIN_DIR)/*
+	rm -rf $(BUILD_DIR)/classes/mlp/src/*.o
+	rm -rf $(BUILD_DIR)/classes/cuda/src/*.o
+	rm -rf $(BUILD_DIR)/Kernels/*.o
+	rm -rf $(BUILD_DIR)/test/*.o
+	rm -rf $(BUILD_DIR)/classes/cpu/src/*.o
+	rm -rf $(BUILD_DIR)/classes/cuda/src/*.o
+	rm -rf $(BUILD_DIR)/Kernels/*.o
+	rm -rf $(BUILD_DIR)/test/*.o
+	rm -rf $(BUILD_DIR)/classes/cpu/src/*.o
+	rm -rf $(BUILD_DIR)/classes/cuda/src/*.o
+	rm -rf $(BUILD_DIR)/*.o $(BIN_DIR)/*

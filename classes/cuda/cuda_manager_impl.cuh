@@ -77,19 +77,19 @@ void allocate_device_memory_xavier(T** device_ptr, size_t count, size_t input_si
 
   curandGenerator_t gen;
   curandCreateGenerator(&gen, CURAND_RNG_PSEUDO_DEFAULT);
-  curandSetPseudoRandomGeneratorSeed(gen, seed);
+  curandSetPseudoRandomGeneratorSeed(gen, time(NULL));
 
   // Fill device array with floats in [0,1)
-  curandGenerateUniform(gen, *device_ptr, input_size);
+  curandGenerateUniform(gen, *device_ptr, count);
 
-  float scale = sqrtf(1.0f / input_size);
+  float scale = sqrtf(2.0f / input_size);
 
-  int num_blocks = (input_size + THREADS_PER_BLOCK - 1) / THREADS_PER_BLOCK;
+  int num_blocks = (count + THREADS_PER_BLOCK - 1) / THREADS_PER_BLOCK;
 
   dim3 grid(num_blocks);
   dim3 block(THREADS_PER_BLOCK);
 
-  scale_xavier<<<grid, block>>>(*device_ptr, input_size, scale);
+  scale_xavier<<<grid, block>>>(*device_ptr, count, scale);
 
   CUDA_CHECK_MANAGER(cudaGetLastError());
 
