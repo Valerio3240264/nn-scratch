@@ -75,19 +75,25 @@ template<typename T>
 void allocate_device_memory_xavier(T** device_ptr, size_t count, size_t input_size) {
   CUDA_CHECK_MANAGER(cudaMalloc(device_ptr, count * sizeof(T)));
 
+  curandGenerator_t gen;
+  curandCreateGenerator(&gen, CURAND_RNG_PSEUDO_DEFAULT);
+  curandSetPseudoRandomGeneratorSeed(gen, seed);
+
+  // Fill device array with floats in [0,1)
+  curandGenerateUniform(gen, *device_ptr, input_size);
+
   float scale = sqrtf(1.0f / input_size);
-  
-  // Random number generator
-  default_random_engine generator;
-  uniform_real_distribution<float> distribution(-scale, scale);
 
-  float *temp = new float[count];
-  for (int i = 0; i < count; i++){
-    temp[i] = distribution(generator);
-  }
+  int num_blocks = (input_size + THREADS_PER_BLOCK - 1) / THREADS_PER_BLOCK;
 
-  copy_host_to_device(*device_ptr, temp, count);
-  delete[] temp;
+  dim3 grid(num_blocks);
+  dim3 block(THREADS_PER_BLOCK);
+
+  scale_xavier<<<grid, block>>>(*device_ptr, input_size, scale);
+
+  CUDA_CHECK_MANAGER(cudaGetLastError());
+
+  curandDestroyGenerator(gen);
 }
 
 // Set device memory to zero

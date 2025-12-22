@@ -4,22 +4,6 @@
 #include <assert.h>
 /* WEIGHTS KERNELS */
 
-/* NAIVE
-MATRIX-VECTOR MULTIPLICATION KERNEL
-__global__ void I_W_B_multiplication(float *d_w, float *d_input_values, float *d_b, float *d_result, int output_size, int input_size) {
-  int row = blockIdx.x * blockDim.x + threadIdx.x;
-  
-  if (row < output_size) {
-    float sum = d_b[row];
-    for (int col = 0; col < input_size; col++) {
-      sum += d_w[row * input_size + col] * d_input_values[col];
-    }
-    d_result[row] = sum;
-  }
-
-} 
-*/
-
 /* VECTORIZED SGEMV KERNEL */
 // Weights size = M x K
 // Input size = K
@@ -73,45 +57,7 @@ __global__ void SGEMV(float *__restrict__ w, float *__restrict__ in, float *__re
   if(tid == 0) res[row] = smem[0] + bias[row];
 }
 
-/* VECTORIZED VECTOR UPDATE KERNEL */
-__global__ void vectorized_vector_update(float *__restrict__ V, float *__restrict__ U, float learning_rate, int size) {
-  int tid = blockIdx.x * blockDim.x + threadIdx.x;
-  int stride = blockDim.x * gridDim.x;
-
-  int size4 = size / 4;
-
-  // Cast the pointer to float4
-  float4 *V4 = reinterpret_cast<float4*>(V);
-  float4 *U4 = reinterpret_cast<float4*>(U);
-
-  // Process full float4 elements
-  for (int i = tid; i < size4; i += stride) {
-    float4 v = V4[i];
-    float4 u = U4[i];
-    v.x -= learning_rate * u.x;
-    v.y -= learning_rate * u.y;
-    v.z -= learning_rate * u.z;
-    v.w -= learning_rate * u.w;
-    V4[i] = v;
-  }
-
-  // Handle remaining tail elements
-  int tail_start = size4 * 4;
-  if(tid < (size - tail_start)) {
-    float v = V[tid + tail_start];
-    float u = U[tid + tail_start];
-    v -= learning_rate * u;
-    V[tid + tail_start] = v;
-  }
-}
-
-__global__ void non_vectorized_vector_update(float *__restrict__ V, float *__restrict__ U, float learning_rate, int size) {
-  int idx = blockIdx.x * blockDim.x + threadIdx.x;
-  for(int i = idx; i < size; i += blockDim.x*gridDim.x){
-    V[i] -= learning_rate * U[i];
-  }
-}
-
+/* TILED BACKWARD PASS WEIGHTS KERNEL */
 const int TILE_SIZE = 16;
 
 __global__ void tiled_backward_Weights(float *__restrict__ d_w, float *__restrict__ d_In, float *__restrict__ d_derivatives, 
@@ -160,5 +106,53 @@ __global__ void tiled_backward_Weights(float *__restrict__ d_w, float *__restric
     for(int i = tid; i < output_size; i += TILE_SIZE * TILE_SIZE){
       d_biasGrad[i] += d_derivatives[i];
     }
+  }
+}
+
+
+/* VECTORIZED VECTOR UPDATE KERNEL */
+__global__ void vectorized_vector_update(float *__restrict__ V, float *__restrict__ U, float learning_rate, int size) {
+  int tid = blockIdx.x * blockDim.x + threadIdx.x;
+  int stride = blockDim.x * gridDim.x;
+
+  int size4 = size / 4;
+
+  // Cast the pointer to float4
+  float4 *V4 = reinterpret_cast<float4*>(V);
+  float4 *U4 = reinterpret_cast<float4*>(U);
+
+  // Process full float4 elements
+  for (int i = tid; i < size4; i += stride) {
+    float4 v = V4[i];
+    float4 u = U4[i];
+    v.x -= learning_rate * u.x;
+    v.y -= learning_rate * u.y;
+    v.z -= learning_rate * u.z;
+    v.w -= learning_rate * u.w;
+    V4[i] = v;
+  }
+
+  // Handle remaining tail elements
+  int tail_start = size4 * 4;
+  if(tid < (size - tail_start)) {
+    float v = V[tid + tail_start];
+    float u = U[tid + tail_start];
+    v -= learning_rate * u;
+    V[tid + tail_start] = v;
+  }
+}
+
+__global__ void non_vectorized_vector_update(float *__restrict__ V, float *__restrict__ U, float learning_rate, int size) {
+  int idx = blockIdx.x * blockDim.x + threadIdx.x;
+  for(int i = idx; i < size; i += blockDim.x*gridDim.x){
+    V[i] -= learning_rate * U[i];
+  }
+}
+
+/* XAVIER INITIALIZATION KERNEL */
+__global__ void scale_xavier(float *__restrict__ d_data, int n, float scale) {
+  size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
+  if (idx < n) {
+    d_data[idx] = (d_data[idx] * 2.0f - 1.0f) * scale;
   }
 }
