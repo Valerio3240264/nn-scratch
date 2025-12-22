@@ -56,25 +56,7 @@ class SoftmaxClass : public ActivationClass {
 };
 ```
 
-### 2. **Conditional Compilation Inconsistency**
-
-**Severity:** LOW  
-**Location:** `classes/mlp/src/mlp.cpp` and `classes/mlp/src/layer.cpp`
-
-**Issue:**
-In `mlp.cpp`, CUDA includes are wrapped in `#ifdef __CUDACC__` (lines 11-16), and the `cuda_init` function uses the same guard (lines 21-62). However, in `layer.cpp`, the guard is only around the CUDA-specific code block inside the constructor (lines 21-33), not around the includes (lines 9-14).
-
-**Impact:**
-- Inconsistent style between files
-- In `layer.cpp`, if compiled with g++, CUDA headers will fail to include
-- Actually, this is already handled correctly in `layer.cpp` with the guard on line 21
-
-**Status:** 
-Upon closer inspection, this is actually handled correctly. The `#ifdef __CUDACC__` in `layer.cpp` line 9 properly guards the CUDA includes. No issue.
-
----
-
-### 3. **Missing Input Validation**
+### 2. **Missing Input Validation**
 
 **Severity:** MEDIUM  
 **Location:** Multiple constructors across all classes
@@ -107,7 +89,7 @@ weights(int input_size, int output_size){
 ```
 ---
 
-### 4. **Kernel Launch Error Handling in Loss Functions**
+### 3. **Kernel Launch Error Handling in Loss Functions**
 
 **Severity:** LOW  
 **Location:** `classes/cuda/cuda_manager.cuh` lines 459-530
@@ -139,7 +121,7 @@ Standardize naming:
 
 ## Performance Considerations
 
-### 5. **Synchronous CUDA Kernel Launches**
+### 4. **Synchronous CUDA Kernel Launches**
 
 **Severity:** MEDIUM  
 **Location:** All kernel launches in `classes/cuda/cuda_manager.cuh`
@@ -161,7 +143,7 @@ All kernel launches are synchronous (use `CUDA_CHECK_MANAGER(cudaGetLastError())
 
 ## Compilation and Build Issues
 
-### 6. **Include Path Dependencies**
+### 5. **Include Path Dependencies**
 
 **Severity:** LOW  
 **Location:** All header files

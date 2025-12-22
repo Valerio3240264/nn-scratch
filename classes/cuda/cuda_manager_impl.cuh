@@ -231,7 +231,6 @@ inline void launch_backward_tanh(float* d_value, float* d_derivatives, float* d_
     non_vectorized_backward_tanh<<<grid, block>>>(d_value, d_derivatives, d_grad, size);
   }
   CUDA_CHECK_MANAGER(cudaGetLastError());
-  
 }
 
 // Launch backward_relu kernel (automatically chooses vectorized or non-vectorized based on alignment)
@@ -249,7 +248,6 @@ inline void launch_backward_relu(float* d_value, float* d_derivatives, float* d_
     non_vectorized_backward_relu<<<grid, block>>>(d_value, d_derivatives, d_grad, size);
   }
   CUDA_CHECK_MANAGER(cudaGetLastError());
-  
 }
 
 // Launch backward_linear - optimized using memcpy (linear activation has identity derivative)
@@ -318,7 +316,6 @@ inline void launch_backward_mse_loss_kernel(float* d_predictions, float* d_targe
   
   backward_mse_loss_kernel<<<grid, block>>>(d_predictions, d_target, d_derivatives, d_grad, size);
   CUDA_CHECK_MANAGER(cudaGetLastError());
-  
 }
 
 // Launch backward MSE loss kernel (simplified version with derivatives = 1.0)
@@ -330,7 +327,6 @@ inline void launch_backward_mse_loss_kernel_simple(float* d_predictions, float* 
   
   backward_mse_loss_kernel_simple<<<grid, block>>>(d_predictions, d_target, d_grad, size);
   CUDA_CHECK_MANAGER(cudaGetLastError());
-  
 }
 
 /* CROSS ENTROPY LOSS KERNELS */
@@ -356,7 +352,6 @@ inline void launch_backward_cross_entropy_loss_kernel(float* d_predictions, floa
   
   backward_cross_entropy_loss_kernel<<<grid, block>>>(d_predictions, d_target, d_derivatives, d_grad, size);
   CUDA_CHECK_MANAGER(cudaGetLastError());
-  
 }
 
 // Launch backward cross entropy loss kernel (simplified version with derivatives = 1.0)

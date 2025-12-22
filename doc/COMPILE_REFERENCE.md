@@ -1,4 +1,4 @@
-# CUDA Compilation Reference
+# Compilation Reference
 
 ## Prerequisites
 - Install Ubuntu on your machine (or use WSL on Windows)
@@ -10,6 +10,20 @@
 - **bin**: contains final executables you run (e.g., `test_cuda_weights` or `test_cuda_weights.exe`).
 
 ## Compilation Commands
+
+### Using Makefile
+
+```bash
+# Build both CPU and GPU
+make
+
+# Or build individually:
+make bin/test_mnist_cpu.exe    # CPU only
+make bin/test_mnist_gpu        # GPU only
+
+# Clean build files
+make clean
+```
 
 ### For CPU Tests
 
@@ -60,10 +74,10 @@ nvcc -std=c++17 -O2 -use_fast_math -rdc=true -I. -c classes/mlp/src/mlp.cu -o bu
 nvcc -std=c++17 -O2 -use_fast_math -rdc=true -I. -c classes/mlp/src/layer.cu -o build/layer.o
 
 # Compile all kernel files
-nvcc -std=c++17 -O2 -use_fast_math -rdc=true -I. -c Cuda_operations/activation.cu -o build/activation.o
-nvcc -std=c++17 -O2 -use_fast_math -rdc=true -I. -c Cuda_operations/loss.cu -o build/loss.o
-nvcc -std=c++17 -O2 -use_fast_math -rdc=true -I. -c Cuda_operations/matrix.cu -o build/matrix.o
-nvcc -std=c++17 -O2 -use_fast_math -rdc=true -I. -c Cuda_operations/softmax.cu -o build/softmax.o
+nvcc -std=c++17 -O2 -use_fast_math -rdc=true -I. -c Kernles/activation.cu -o build/activation.o
+nvcc -std=c++17 -O2 -use_fast_math -rdc=true -I. -c Kernles/loss.cu -o build/loss.o
+nvcc -std=c++17 -O2 -use_fast_math -rdc=true -I. -c Kernles/matrix.cu -o build/matrix.o
+nvcc -std=c++17 -O2 -use_fast_math -rdc=true -I. -c Kernles/softmax.cu -o build/softmax.o
 
 # Compile test
 nvcc -std=c++17 -O2 -use_fast_math -rdc=true -I. -c test/test_mnist_gpu.cu -o build/test_mnist_gpu.o
