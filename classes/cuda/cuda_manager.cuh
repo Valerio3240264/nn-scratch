@@ -17,7 +17,7 @@ __global__ void tiled_backward_Weights(float *__restrict__ d_w, float *__restric
                                        int output_size, int input_size);
 
 // Xavier initialization kernel
-__global__ void scale_xavier(float *__restrict__ d_data, int n, float scale);
+__global__ void scale_weights(float *__restrict__ d_data, int n, float scale);
 
 /* ACTIVATION FUNCTION KERNELS */
 // Vectorized forward pass
@@ -81,6 +81,8 @@ template<typename T>
 void allocate_device_memory_random(T** device_ptr, size_t count);
 template<typename T>
 void allocate_device_memory_xavier(T** device_ptr, size_t count, size_t input_size);
+template<typename T>
+void allocate_device_memory_he(T** device_ptr, size_t count, size_t input_size);
 template<typename T>
 void zero_device_memory(T* device_ptr, size_t count);
 void free_device_memory(void* device_ptr);

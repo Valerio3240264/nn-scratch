@@ -3,6 +3,7 @@
 
 #include "../../virtual_classes.h"
 #include "../headers/cuda_input.cuh"
+#include "../../enums.h"
 /*
 CUDA WEIGHTS CLASS DOCUMENTATION:
 PURPOSE:
@@ -23,10 +24,13 @@ class cuda_weights: public WeightsClass{
     float *d_input_values;
     BackwardClass *pred;
 
+    // Initialization based on the activation function name
+    void init_weights(Activation_name function_name) override;
+
   public:
 
     // Constructor
-    cuda_weights(int input_size, int output_size);
+    cuda_weights(int input_size, int output_size, Activation_name function_name);
   
     // Destructor
     ~cuda_weights();

@@ -21,35 +21,6 @@ The goal of this test is to check if the neural network is able to classify the 
 Excecution time is very slow, because the network trains entirely on the CPU.
 */
 
-
-void plot_sample(input *data, int label, int sample_index) {
-  std::cout << "\n=== Sample " << sample_index << " (Label: " << label << ") ===" << std::endl;
-  
-  float *values = data->values_pointer();
-  
-  // Each MNIST image is 28x28 pixels
-  for (int row = 0; row < 28; row++) {
-    for (int col = 0; col < 28; col++) {
-      float pixel_value = values[row * 28 + col];
-      
-      // Convert normalized pixel value (0.0-1.0) to ASCII characters
-      if (pixel_value < 0.1) {
-        std::cout << "  ";  // Very dark/black
-      } else if (pixel_value < 0.3) {
-        std::cout << "..";  // Dark gray
-      } else if (pixel_value < 0.5) {
-        std::cout << "::";  // Medium gray
-      } else if (pixel_value < 0.7) {
-        std::cout << "++";  // Light gray
-      } else {
-        std::cout << "##";  // White/very light
-      }
-    }
-    std::cout << std::endl;
-  }
-  std::cout << std::endl;
-}
-
 void read_dataset(input **data, int *labels, std::string filename, int max_samples){
   std::ifstream file(filename);
   std::string line;
@@ -80,7 +51,7 @@ void read_dataset(input **data, int *labels, std::string filename, int max_sampl
     for (int pixel = 0; pixel < 784; pixel++) {
       if (std::getline(ss, value, ',')) {
         // Normalize pixel values from 0-255 to 0.0-1.0
-        values_ptr[pixel] = std::stof(value);
+        values_ptr[pixel] = std::stof(value)/255.0f;
       }
     }
     values_ptr[784] = 1.0; // Add bias term
@@ -89,13 +60,6 @@ void read_dataset(input **data, int *labels, std::string filename, int max_sampl
   
   file.close();
   std::cout << "Successfully loaded " << sample_index << " samples from " << filename << std::endl;
-}
-
-// Function to shuffle training indices
-void shuffle_training_data(std::vector<int>& train_indices) {
-  static std::random_device rd;
-  static std::mt19937 gen(rd());
-  std::shuffle(train_indices.begin(), train_indices.end(), gen);
 }
 
 // Function to calculate accuracy on a dataset
@@ -175,22 +139,24 @@ int main(){
   // TRAINING PHASE
   std::cout << "\n=== TRAINING PHASE ===" << std::endl;
   
+  // Global timing accumulators across all epochs
+  double total_forward_time_all = 0.0;
+  double total_loss_time_all = 0.0;
+  double total_update_time_all = 0.0;
+  long long total_samples_processed = 0;
+  long long total_batches_processed = 0;
+  
   for(int epoch = 0; epoch < num_epochs; epoch++){
     std::cout << "Epoch " << (epoch + 1) << " started" << std::endl;
     
-    // Shuffle training data at the beginning of each epoch
-    shuffle_training_data(train_indices);
-    std::cout << "Training data shuffled" << std::endl;
-    
     network.zero_loss();
-    
+
     // Timing accumulators
     double total_forward_time = 0.0;
     double total_loss_time = 0.0;
     double total_update_time = 0.0;
     int num_batches = 0;
     
-    // Train on shuffled data
     for(int i = 0; i < train_indices.size(); i++){
       int idx = train_indices[i];
       
@@ -211,7 +177,7 @@ int main(){
       // Update after accumulating batch_size gradients
       if((i + 1) % batch_size == 0){
         start_time = std::chrono::high_resolution_clock::now();
-        network.update(learning_rate/batch_size);
+        network.update(learning_rate);
         end_time = std::chrono::high_resolution_clock::now();
         auto update_time = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time).count() / 1000.0; // Convert to ms
         total_update_time += update_time;
@@ -223,7 +189,7 @@ int main(){
     // Update with remaining samples if training_samples not divisible by batch_size
     if(train_indices.size() % batch_size != 0){
       auto start_time = std::chrono::high_resolution_clock::now();
-      network.update(learning_rate/batch_size);
+      network.update(learning_rate);
       auto end_time = std::chrono::high_resolution_clock::now();
       auto update_time = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time).count() / 1000.0; // Convert to ms
       total_update_time += update_time;
@@ -245,9 +211,31 @@ int main(){
     double total_time = total_forward_time + total_loss_time + total_update_time;
     std::cout << "Total Epoch Time:          " << total_time << " ms (" << total_time / 1000.0 << " seconds)" << std::endl;
     std::cout << "Training ";
-    network.print_loss();
+    double loss = network.get_loss();
+    std::cout << "Loss: " << loss/training_samples << std::endl;
     std::cout << "------------------------------------\n" << std::endl;
+
+    // Accumulate global timings
+    total_forward_time_all += total_forward_time;
+    total_loss_time_all += total_loss_time;
+    total_update_time_all += total_update_time;
+    total_samples_processed += train_indices.size();
+    total_batches_processed += num_batches;
   }
+
+  // Print overall timing statistics
+  std::cout << "\n=== TOTAL TRAINING TIMINGS ===" << std::endl;
+  std::cout << std::fixed << std::setprecision(4);
+  std::cout << "Mean Forward Pass Time:    " << (total_samples_processed ? total_forward_time_all / total_samples_processed : 0.0) << " ms" << std::endl;
+  std::cout << "Mean Compute Loss Time:    " << (total_samples_processed ? total_loss_time_all / total_samples_processed : 0.0) << " ms" << std::endl;
+  if(total_batches_processed > 0){
+    std::cout << "Mean Update Step Time:     " << total_update_time_all / total_batches_processed << " ms" << std::endl;
+  }
+  std::cout << "Total Forward Time:        " << total_forward_time_all << " ms" << std::endl;
+  std::cout << "Total Compute Loss Time:    " << total_loss_time_all << " ms" << std::endl;
+  std::cout << "Total Update Step Time:    " << total_update_time_all << " ms" << std::endl;
+  double grand_total_time = total_forward_time_all + total_loss_time_all + total_update_time_all;
+  std::cout << "Total Training Time:       " << grand_total_time << " ms (" << grand_total_time / 1000.0 << " seconds)" << std::endl;
 
   // FINAL TESTING PHASE
   std::cout << "\n=== FINAL TESTING ===" << std::endl;
@@ -255,24 +243,6 @@ int main(){
   std::cout << "Final accuracy: " << accuracy_after << "%" << std::endl;
   std::cout << "Improvement: " << (accuracy_after - accuracy_before) << "%" << std::endl;
 
-  // Plot the first 10 samples
-  
-  /*
-  std::cout << "\n" << std::string(60, '=') << std::endl;
-  std::cout << "DISPLAYING FIRST 10 MNIST SAMPLES" << std::endl;
-  std::cout << std::string(60, '=') << std::endl;
-  
-  for (int i = 0; i < 10; i++) {
-    plot_sample(dataset[i], labels[i], i);
-    
-    if (i < 9) {
-      std::cout << std::string(40, '-') << std::endl;
-    }
-  }
-  
-  std::cout << "\nVisualization complete!" << std::endl;
-  */
-  
   // Clean up memory
   for(int i = 0; i < total_samples; i++){
     delete dataset[i];

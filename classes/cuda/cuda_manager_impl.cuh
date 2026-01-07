@@ -70,9 +70,9 @@ void allocate_device_memory_random(T** device_ptr, size_t count) {
 }
 
 // Allocate device memory with Xavier/Glorot initialization
-// Weights are initialized uniformly in [-scale, scale] where scale = sqrt(1 / input_size)
+// Weights are initialized uniformly in [-scale, scale] where scale = sqrt(6.0 / (input_size + output_size))
 template<typename T>
-void allocate_device_memory_xavier(T** device_ptr, size_t count, size_t input_size) {
+void allocate_device_memory_xavier(T** device_ptr, size_t count, size_t input_size, size_t output_size) {
   CUDA_CHECK_MANAGER(cudaMalloc(device_ptr, count * sizeof(T)));
 
   curandGenerator_t gen;
@@ -82,14 +82,40 @@ void allocate_device_memory_xavier(T** device_ptr, size_t count, size_t input_si
   // Fill device array with floats in [0,1)
   curandGenerateUniform(gen, *device_ptr, count);
 
-  float scale = sqrtf(2.0f / input_size);
+  float scale = sqrtf(6.0f / (input_size + output_size));
 
   int num_blocks = (count + THREADS_PER_BLOCK - 1) / THREADS_PER_BLOCK;
 
   dim3 grid(num_blocks);
   dim3 block(THREADS_PER_BLOCK);
 
-  scale_xavier<<<grid, block>>>(*device_ptr, count, scale);
+  scale_weights<<<grid, block>>>(*device_ptr, count, scale);
+
+  CUDA_CHECK_MANAGER(cudaGetLastError());
+
+  curandDestroyGenerator(gen);
+}
+
+// Weights are initialized uniformly in [-scale, scale] where scale = sqrt(2.0 / input_size)
+template<typename T>
+void allocate_device_memory_he(T** device_ptr, size_t count, size_t input_size) {
+  CUDA_CHECK_MANAGER(cudaMalloc(device_ptr, count * sizeof(T)));
+
+  curandGenerator_t gen;
+  curandCreateGenerator(&gen, CURAND_RNG_PSEUDO_DEFAULT);
+  curandSetPseudoRandomGeneratorSeed(gen, time(NULL));
+
+  // Fill device array with floats in [0,1)
+  curandGenerateUniform(gen, *device_ptr, count);
+
+  float scale = sqrtf(2.0f / input_size); // He initialization
+
+  int num_blocks = (count + THREADS_PER_BLOCK - 1) / THREADS_PER_BLOCK;
+
+  dim3 grid(num_blocks);
+  dim3 block(THREADS_PER_BLOCK);
+
+  scale_weights<<<grid, block>>>(*device_ptr, count, scale);
 
   CUDA_CHECK_MANAGER(cudaGetLastError());
 

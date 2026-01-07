@@ -2,6 +2,7 @@
 #define WEIGHTS_H
 #include "input.h"
 #include "../../virtual_classes.h"
+#include "../../enums.h"
 
 
 /* TODO 
@@ -51,9 +52,12 @@ class weights: public WeightsClass{
     float *input_values;
     BackwardClass *pred;
 
+    // Initialization based on the activation function name
+    void init_weights(Activation_name function_name) override;
+
   public:
     // Constructors
-    weights(int input_size, int output_size);
+    weights(int input_size, int output_size, Activation_name function_name);
     // Destructor
     ~weights();
     // Getters

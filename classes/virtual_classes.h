@@ -1,3 +1,5 @@
+#include "enums.h"
+
 #ifndef VIRTUAL_CLASSES_H
 #define VIRTUAL_CLASSES_H
 
@@ -13,6 +15,9 @@ class BackwardClass {
 
 /* BASE INTERFACE FOR ALL WEIGHTS classes */
 class WeightsClass : public BackwardClass {
+	private:
+		virtual void init_weights(Activation_name function_name) = 0;
+
 	public:
 		virtual ~WeightsClass() = default;
 		virtual void operator()(BackwardClass *in, float *output_pointer) = 0;

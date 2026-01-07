@@ -63,7 +63,7 @@ GPU_TEST = $(BUILD_DIR)/test/test_mnist_gpu.o
 # Executables
 #-------------------------
 CPU_EXE = $(BIN_DIR)/test_mnist_cpu.exe
-GPU_EXE = $(BIN_DIR)/test_mnist_gpu
+GPU_EXE = $(BIN_DIR)/test_mnist_gpu.exe
 
 #-------------------------
 # Compile rules

@@ -150,7 +150,7 @@ __global__ void non_vectorized_vector_update(float *__restrict__ V, float *__res
 }
 
 /* XAVIER INITIALIZATION KERNEL */
-__global__ void scale_xavier(float *__restrict__ d_data, int n, float scale) {
+__global__ void scale_weights(float *__restrict__ d_data, int n, float scale) {
   size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
   if (idx < n) {
     d_data[idx] = (d_data[idx] * 2.0f - 1.0f) * scale;

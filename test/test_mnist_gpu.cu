@@ -22,39 +22,6 @@ The network trains on CUDA-enabled GPUs for significantly faster training compar
 All forward and backward passes are executed on the GPU, with minimal host-device transfers.
 */
 
-void plot_sample(cuda_input *data, int label, int sample_index) {
-  std::cout << "\n=== Sample " << sample_index << " (Label: " << label << ") ===" << std::endl;
-  
-  // Copy values from device to host for visualization
-  float *h_values = new float[784];
-  float *d_values = data->values_pointer();
-  copy_device_to_host(h_values, d_values, 784);
-  
-  // Each MNIST image is 28x28 pixels
-  for (int row = 0; row < 28; row++) {
-    for (int col = 0; col < 28; col++) {
-      float pixel_value = h_values[row * 28 + col];
-      
-      // Convert normalized pixel value (0.0-1.0) to ASCII characters
-      if (pixel_value < 0.1) {
-        std::cout << "  ";  // Very dark/black
-      } else if (pixel_value < 0.3) {
-        std::cout << "..";  // Dark gray
-      } else if (pixel_value < 0.5) {
-        std::cout << "::";  // Medium gray
-      } else if (pixel_value < 0.7) {
-        std::cout << "++";  // Light gray
-      } else {
-        std::cout << "##";  // White/very light
-      }
-    }
-    std::cout << std::endl;
-  }
-  std::cout << std::endl;
-  
-  delete[] h_values;
-}
-
 void read_dataset(cuda_input **data, int *labels, std::string filename, int max_samples){
   std::ifstream file(filename);
   std::string line;
@@ -102,20 +69,12 @@ void read_dataset(cuda_input **data, int *labels, std::string filename, int max_
   std::cout << "Successfully loaded " << sample_index << " samples from " << filename << std::endl;
 }
 
-// Function to shuffle training indices
-void shuffle_training_data(std::vector<int>& train_indices) {
-  static std::random_device rd;
-  static std::mt19937 gen(rd());
-  std::shuffle(train_indices.begin(), train_indices.end(), gen);
-}
-
 // Function to calculate accuracy on a dataset
 float calculate_accuracy(mlp& network, cuda_input** dataset, int* labels, const std::vector<int>& indices) {
   int correct_predictions = 0;
   network.zero_loss();
   
   for(int idx : indices) {
-    //std::cout << "Computing loss for sample " << idx << std::endl;
     network(dataset[idx]);
     if(network.get_prediction() == labels[idx]) {
       correct_predictions++;
@@ -196,123 +155,105 @@ int main(){
   // TRAINING PHASE
   std::cout << "\n=== TRAINING PHASE ===" << std::endl;
   
-  // Create CUDA events for timing
-  //cudaEvent_t start, stop;
-  //cudaEventCreate(&start);
-  //cudaEventCreate(&stop);
+  // Global timing accumulators across all epochs
+  double total_forward_time_all = 0.0;
+  double total_loss_time_all = 0.0;
+  double total_update_time_all = 0.0;
+  long long total_samples_processed = 0;
+  long long total_batches_processed = 0;
   
   for(int epoch = 0; epoch < num_epochs; epoch++){
     std::cout << "Epoch " << (epoch + 1) << " started" << std::endl;
     
     network.zero_loss();
-    network.zero_grad();
     
-    // Timing accumulators for this epoch
-    /*
-    float total_forward_time = 0.0f;
-    float total_loss_time = 0.0f;
-    float total_update_time = 0.0f;
-    float total_zero_grad_time = 0.0f;
-    int num_updates = 0;
-    */
-    // Train on shuffled data
+    // Timing accumulators
+    double total_forward_time = 0.0;
+    double total_loss_time = 0.0;
+    double total_update_time = 0.0;
+    int num_batches = 0;
+    
     for(int i = 0; i < train_indices.size(); i++){
       int idx = train_indices[i];
       
-      // Time forward pass
-      //cudaEventRecord(start);
+      // Forward pass (timed)
+      auto start_time = std::chrono::high_resolution_clock::now();
       network(dataset[idx]);
-      //cudaEventRecord(stop);
-      //cudaEventSynchronize(stop);
-      //float forward_time;
-      //cudaEventElapsedTime(&forward_time, start, stop);
-      //total_forward_time += forward_time;
-      
-      // Time compute loss
-      //cudaEventRecord(start);
+      auto end_time = std::chrono::high_resolution_clock::now();
+      auto forward_time = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time).count() / 1000.0; // Convert to ms
+      total_forward_time += forward_time;
+
+      // Compute loss (includes backward pass) (timed)
+      start_time = std::chrono::high_resolution_clock::now();
       network.compute_loss(labels[idx]);
-      //cudaEventRecord(stop);
-      //cudaEventSynchronize(stop);
-      //float loss_time;
-      //cudaEventElapsedTime(&loss_time, start, stop);
-      //total_loss_time += loss_time;
+      end_time = std::chrono::high_resolution_clock::now();
+      auto loss_time = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time).count() / 1000.0; // Convert to ms
+      total_loss_time += loss_time;
       
       // Update after accumulating batch_size gradients
       if((i + 1) % batch_size == 0){
-        // Synchronize to ensure all backward pass kernels have completed
-        //cudaDeviceSynchronize();
-        // Time update
-        //cudaEventRecord(start);
+        start_time = std::chrono::high_resolution_clock::now();
         network.update(learning_rate);
-        //cudaEventRecord(stop);
-        //cudaEventSynchronize(stop);
-        //float update_time;
-        //cudaEventElapsedTime(&update_time, start, stop);
-        //total_update_time += update_time;
-        // Time zero_grad
-        //cudaEventRecord(start);
+        end_time = std::chrono::high_resolution_clock::now();
+        auto update_time = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time).count() / 1000.0; // Convert to ms
+        total_update_time += update_time;
+        num_batches++;
         network.zero_grad();
-        //cudaEventRecord(stop);
-        //cudaEventSynchronize(stop);
-        //float zero_grad_time;
-        //cudaEventElapsedTime(&zero_grad_time, start, stop);
-        //total_zero_grad_time += zero_grad_time;
-        
-        //num_updates++;
       }
     }
     
     // Update with remaining samples if training_samples not divisible by batch_size
     if(train_indices.size() % batch_size != 0){
-      // Synchronize to ensure all backward pass kernels have completed
-      
-      // Time update
-      //cudaEventRecord(start);
+      auto start_time = std::chrono::high_resolution_clock::now();
       network.update(learning_rate);
-      //cudaEventRecord(stop);
-      //cudaEventSynchronize(stop);
-      //float update_time;
-      //cudaEventElapsedTime(&update_time, start, stop);
-      //total_update_time += update_time;
-      
-      // Time zero_grad
-      //cudaEventRecord(start);
+      auto end_time = std::chrono::high_resolution_clock::now();
+      auto update_time = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time).count() / 1000.0; // Convert to ms
+      total_update_time += update_time;
+      num_batches++;
       network.zero_grad();
-      //cudaEventRecord(stop);
-      //cudaEventSynchronize(stop);
-      //float zero_grad_time;
-      //cudaEventElapsedTime(&zero_grad_time, start, stop);
-      //total_zero_grad_time += zero_grad_time;
-      
-      //num_updates++;
     }
     
-    // Print training loss
-    std::cout << "Training ";
-    network.print_loss();
-    
     // Print timing statistics
-    /*
-    int num_samples = train_indices.size();
     std::cout << "\n--- Timing Statistics (Epoch " << (epoch + 1) << ") ---" << std::endl;
     std::cout << std::fixed << std::setprecision(4);
-    std::cout << "Mean Forward Pass Time:    " << (total_forward_time / num_samples) << " ms" << std::endl;
-    std::cout << "Mean Compute Loss Time:    " << (total_loss_time / num_samples) << " ms" << std::endl;
-    std::cout << "Mean Update Time:          " << (total_update_time / num_updates) << " ms" << std::endl;
-    std::cout << "Mean Zero Grad Time:       " << (total_zero_grad_time / num_updates) << " ms" << std::endl;
+    std::cout << "Mean Forward Pass Time:    " << total_forward_time / train_indices.size() << " ms" << std::endl;
+    std::cout << "Mean Compute Loss Time:    " << total_loss_time / train_indices.size() << " ms" << std::endl;
+    if(num_batches > 0){
+      std::cout << "Mean Update Step Time:     " << total_update_time / num_batches << " ms" << std::endl;
+    }
     std::cout << "Total Forward Time:        " << total_forward_time << " ms" << std::endl;
-    std::cout << "Total Compute Loss Time:   " << total_loss_time << " ms" << std::endl;
-    std::cout << "Total Update Time:         " << total_update_time << " ms" << std::endl;
-    std::cout << "Total Zero Grad Time:      " << total_zero_grad_time << " ms" << std::endl;
-    std::cout << "Total Epoch Time:          " << (total_forward_time + total_loss_time + total_update_time + total_zero_grad_time) << " ms" << std::endl;
+    std::cout << "Total Compute Loss Time:    " << total_loss_time << " ms" << std::endl;
+    std::cout << "Total Update Step Time:    " << total_update_time << " ms" << std::endl;
+    double total_time = total_forward_time + total_loss_time + total_update_time;
+    std::cout << "Total Epoch Time:          " << total_time << " ms (" << total_time / 1000.0 << " seconds)" << std::endl;
+    std::cout << "Training ";
+    double loss = network.get_loss();
+    std::cout << "Loss: " << loss/training_samples << std::endl;
     std::cout << "------------------------------------\n" << std::endl;
-    */
+
+    // Accumulate global timings
+    total_forward_time_all += total_forward_time;
+    total_loss_time_all += total_loss_time;
+    total_update_time_all += total_update_time;
+    total_samples_processed += train_indices.size();
+    total_batches_processed += num_batches;
+    
   }
   
-  // Clean up CUDA events
-  //cudaEventDestroy(start);
-  //cudaEventDestroy(stop);
-
+  // Print overall timing statistics
+  std::cout << "\n=== TOTAL TRAINING TIMINGS ===" << std::endl;
+  std::cout << std::fixed << std::setprecision(4);
+  std::cout << "Mean Forward Pass Time:    " << (total_samples_processed ? total_forward_time_all / total_samples_processed : 0.0) << " ms" << std::endl;
+  std::cout << "Mean Compute Loss Time:    " << (total_samples_processed ? total_loss_time_all / total_samples_processed : 0.0) << " ms" << std::endl;
+  if(total_batches_processed > 0){
+    std::cout << "Mean Update Step Time:     " << total_update_time_all / total_batches_processed << " ms" << std::endl;
+  }
+  std::cout << "Total Forward Time:        " << total_forward_time_all << " ms" << std::endl;
+  std::cout << "Total Compute Loss Time:    " << total_loss_time_all << " ms" << std::endl;
+  std::cout << "Total Update Step Time:    " << total_update_time_all << " ms" << std::endl;
+  double grand_total_time = total_forward_time_all + total_loss_time_all + total_update_time_all;
+  std::cout << "Total Training Time:       " << grand_total_time << " ms (" << grand_total_time / 1000.0 << " seconds)" << std::endl;
+  
   // FINAL TESTING PHASE
   std::cout << "\n=== FINAL TESTING ===" << std::endl;
   float accuracy_after = calculate_accuracy(network, dataset, labels, validation_indices);

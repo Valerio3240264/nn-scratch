@@ -1,4 +1,5 @@
 #include "../headers/weights.h"
+#include "../../enums.h"
 
 #include <iostream>
 #include <cstdlib>
@@ -8,9 +9,46 @@
 
 using namespace std;
 
+void weights::init_weights(Activation_name function_name){
+  float scale;
+  if(function_name == TANH){
+    // Xavier initialization
+    scale = sqrtf(6.0f / (this->input_size + this->output_size));
+  }
+  else if(function_name == RELU){
+    // He initialization
+    scale = sqrtf(2.0f / this->input_size);
+  }
+  else if(function_name == LINEAR){
+    // Xavier initialization
+    scale = sqrtf(6.0f / (this->input_size + this->output_size));
+  }
+  else{
+    throw invalid_argument("Invalid activation function");
+    exit(1);
+  }
+
+  default_random_engine generator;
+  uniform_real_distribution<float> distribution(-scale, scale);
+
+  for (int i = 0; i < this->input_size * this->output_size; i++){
+    this->w[i] = distribution(generator);
+    this->grad_w[i] = 0.0f;
+  }
+  for (int i = 0; i < this->output_size; i++){
+    this->b[i] = 0.0f;
+    this->grad_b[i] = 0.0f;
+  }
+}
+
 /* CONSTRUCTOR AND DESTRUCTOR */
 // Constructor
-weights::weights(int input_size, int output_size){
+weights::weights(int input_size, int output_size, Activation_name function_name){
+  if(input_size <= 0 || output_size <= 0){
+    throw invalid_argument("Input and output size must be greater than 0");
+    exit(1);
+  }
+
   this->input_size = input_size;
   this->output_size = output_size;
   this->w = new float[input_size * output_size];
@@ -20,34 +58,7 @@ weights::weights(int input_size, int output_size){
   this->input_values = nullptr;
   this->pred = nullptr;
 
-  // Xavier/Glorot initialization: scale by sqrt(1/input_size) for better convergence
-  /*
-    Layer saturation occurs when the latest layer of a neural network doesnt change its output much as the network trains. 
-    This is because the weights are not being updated much.
-    This brings to the vanishing gradient problem, where the gradients become too small to update the weights effectively.
-    This issue is related to the variance of the weights and the input values for each layer.
-    In Understanding the difficulty of training deep feedforward neural networks, Glorot and Bengio (2010) proposed a way to initialize the weights of a layer to achive a good balance between the variance of the weights and the input values.
-  */
-  /*
-    Experiments on the MNIST dataset with a 3 layer neural network (784 -> 128 -> 64 -> 10 -> softmax):
-    With the same network configuration, using sqrt(6.0 / (input_size + output_size)) resulted in approximately 50% validation accuracy after 5 epochs.
-    In contrast, using scale = sqrt(2 .0 / input_size) improved performance significantly, achieving around 95% validation accuracy in the same number of epochs.
-    This suggests that for this particular problem and network, the simpler sqrt(2.0 / input_size) initialization works better, highlighting the importance of empirical validation of initialization strategies.
-  */
-  float scale = sqrtf(2.0f / input_size);
-  
-  // Random number generator
-  default_random_engine generator;
-  uniform_real_distribution<float> distribution(-scale, scale);
-
-  for (int i = 0; i < input_size * output_size; i++){
-    this->w[i] = distribution(generator);
-    this->grad_w[i] = 0.0f;
-  }
-  for (int i = 0; i < output_size; i++){
-    this->b[i] = 0.0f;
-    this->grad_b[i] = 0.0f;
-  }
+  init_weights(function_name);
 }
 
 // Destructor

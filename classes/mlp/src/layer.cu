@@ -23,7 +23,7 @@ layer::layer(int input_size, int output_size, Activation_name function_name, boo
   #ifdef __CUDACC__
     this->input_size = input_size;
     this->output_size = output_size;
-    this->W = new cuda_weights(input_size, output_size);
+    this->W = new cuda_weights(input_size, output_size, function_name);
     this->function_name = function_name;
     this->in = nullptr;
     float *output_buffer;
@@ -38,7 +38,7 @@ layer::layer(int input_size, int output_size, Activation_name function_name, boo
   else{
     this->input_size = input_size;
     this->output_size = output_size;
-    this->W = new weights(input_size, output_size);
+    this->W = new weights(input_size, output_size, function_name);
     this->function_name = function_name;
     this->in = nullptr;
     float *output_buffer = new float[output_size];

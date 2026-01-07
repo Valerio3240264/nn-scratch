@@ -2,13 +2,34 @@
 
 #include "../cuda_manager.cuh"
 #include "../cuda_manager_impl.cuh"
+#include "../../enums.h"
 #include <iostream>
 
 using namespace std;
 
+void cuda_weights::init_weights(Activation_name function_name){
+  if(function_name == TANH){
+    allocate_device_memory_xavier<float>(&this->d_w, input_size * output_size, this->input_size, this->output_size);
+  }
+  else if(function_name == RELU){
+    allocate_device_memory_he<float>(&this->d_w, input_size * output_size, this->input_size);
+  }
+  else if(function_name == LINEAR){
+    allocate_device_memory_xavier<float>(&this->d_w, input_size * output_size, this->input_size, this->output_size);
+  }
+  else{
+    throw invalid_argument("Invalid activation function");
+  }
+}
+
 /* CONSTRUCTOR AND DESTRUCTOR */
 // Constructor
-cuda_weights::cuda_weights(int input_size, int output_size){
+cuda_weights::cuda_weights(int input_size, int output_size, Activation_name function_name){
+  if(input_size <= 0 || output_size <= 0){
+    throw invalid_argument("Input and output size must be greater than 0");
+    exit(1);
+  }
+  
   this->input_size = input_size;
   this->output_size = output_size;
   this->d_w = nullptr;
@@ -19,8 +40,8 @@ cuda_weights::cuda_weights(int input_size, int output_size){
   this->d_input_values = nullptr;
   this->pred = nullptr;
 
-  // Initialize weights with Xavier/Glorot initialization
-  allocate_device_memory_xavier<float>(&this->d_w, input_size * output_size, input_size);
+  // Initialize weights and biases
+  init_weights(function_name);
   allocate_device_memory_zeros<float>(&this->d_grad_w, input_size * output_size);
   allocate_device_memory_zeros<float>(&this->d_b, output_size);
   allocate_device_memory_zeros<float>(&this->d_grad_b, output_size);
