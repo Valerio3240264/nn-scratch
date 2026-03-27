@@ -20,7 +20,8 @@ CPU_SRC = classes/cpu/src/input.cpp \
           classes/cpu/src/activation.cpp \
           classes/cpu/src/softmax.cpp \
           classes/cpu/src/mse_loss.cpp \
-          classes/cpu/src/cross_entropy_loss.cpp
+          classes/cpu/src/cross_entropy_loss.cpp \
+					utils/MatricesOp.cpp
 
 CPU_OBJ = $(patsubst %.cpp,$(BUILD_DIR)/%.o,$(CPU_SRC))
 

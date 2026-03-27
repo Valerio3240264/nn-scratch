@@ -37,7 +37,7 @@ void mlp::cuda_init(int *hidden_sizes){
     cout<<"Error: num_layers must be greater than 0"<<endl;
     exit(1);
   }
-  
+
   // Create softmax layer if needed
   if(this->has_softmax){
     BackwardClass *last_layer_act = this->layers[this->num_layers - 1]->get_output();

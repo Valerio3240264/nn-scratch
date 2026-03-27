@@ -12,7 +12,9 @@ void cuda_weights::init_weights(Activation_name function_name){
     allocate_device_memory_xavier<float>(&this->d_w, input_size * output_size, this->input_size, this->output_size);
   }
   else if(function_name == RELU){
+    cout<<"Allocating weights for ReLU"<<endl;
     allocate_device_memory_he<float>(&this->d_w, input_size * output_size, this->input_size);
+    cout<<"Allocated weights for ReLU"<<endl;
   }
   else if(function_name == LINEAR){
     allocate_device_memory_xavier<float>(&this->d_w, input_size * output_size, this->input_size, this->output_size);

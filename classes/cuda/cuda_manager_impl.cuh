@@ -8,14 +8,49 @@
 #include <type_traits>
 #include <random>
 #include <cstdint>
+#include <cstdio>
 
 using namespace std;
 
-const int THREADS_PER_BLOCK = 512;
+const int THREADS_PER_BLOCK = 256;
 
 // File-scope inline variables (shared across translation units)
 inline bool cuda_available_checked = false;
 inline bool cuda_available = false;
+
+inline const char* curand_status_to_string(curandStatus_t status) {
+  switch (status) {
+    case CURAND_STATUS_SUCCESS: return "CURAND_STATUS_SUCCESS";
+    case CURAND_STATUS_VERSION_MISMATCH: return "CURAND_STATUS_VERSION_MISMATCH";
+    case CURAND_STATUS_NOT_INITIALIZED: return "CURAND_STATUS_NOT_INITIALIZED";
+    case CURAND_STATUS_ALLOCATION_FAILED: return "CURAND_STATUS_ALLOCATION_FAILED";
+    case CURAND_STATUS_TYPE_ERROR: return "CURAND_STATUS_TYPE_ERROR";
+    case CURAND_STATUS_OUT_OF_RANGE: return "CURAND_STATUS_OUT_OF_RANGE";
+    case CURAND_STATUS_LENGTH_NOT_MULTIPLE: return "CURAND_STATUS_LENGTH_NOT_MULTIPLE";
+    case CURAND_STATUS_DOUBLE_PRECISION_REQUIRED: return "CURAND_STATUS_DOUBLE_PRECISION_REQUIRED";
+    case CURAND_STATUS_LAUNCH_FAILURE: return "CURAND_STATUS_LAUNCH_FAILURE";
+    case CURAND_STATUS_PREEXISTING_FAILURE: return "CURAND_STATUS_PREEXISTING_FAILURE";
+    case CURAND_STATUS_INITIALIZATION_FAILED: return "CURAND_STATUS_INITIALIZATION_FAILED";
+    case CURAND_STATUS_ARCH_MISMATCH: return "CURAND_STATUS_ARCH_MISMATCH";
+    case CURAND_STATUS_INTERNAL_ERROR: return "CURAND_STATUS_INTERNAL_ERROR";
+    default: return "CURAND_STATUS_UNKNOWN";
+  }
+}
+
+inline void check_curand_error(curandStatus_t status, const char* file, int line) {
+  if (status != CURAND_STATUS_SUCCESS) {
+    fprintf(stderr, "CURAND error at %s:%d: %s\n", file, line, curand_status_to_string(status));
+    throw std::runtime_error("CURAND operation failed");
+  }
+}
+
+#define CURAND_CHECK_MANAGER(call) \
+  do { \
+    curandStatus_t status = call; \
+    if (status != CURAND_STATUS_SUCCESS) { \
+      check_curand_error(status, __FILE__, __LINE__); \
+    } \
+  } while(0)
 
 /* DEVICE MANAGEMENT */
 // Function implementations
@@ -52,21 +87,21 @@ void allocate_device_memory_zeros(T** device_ptr, size_t count) {
 template<typename T>
 void allocate_device_memory_random(T** device_ptr, size_t count) {
   CUDA_CHECK_MANAGER(cudaMalloc(device_ptr, count * sizeof(T)));
-  
-  curandGenerator_t generator;
-  curandCreateGenerator(&generator, CURAND_RNG_PSEUDO_DEFAULT);
-  curandSetPseudoRandomGeneratorSeed(generator, time(NULL));
-  
+
+  curandGenerator_t generator = nullptr;
+  CURAND_CHECK_MANAGER(curandCreateGenerator(&generator, CURAND_RNG_PSEUDO_DEFAULT));
+  CURAND_CHECK_MANAGER(curandSetPseudoRandomGeneratorSeed(generator, static_cast<unsigned long long>(time(NULL))));
+
   if (std::is_same<T, double>::value) {
-    curandGenerateUniformDouble(generator, reinterpret_cast<double*>(*device_ptr), count);
+    CURAND_CHECK_MANAGER(curandGenerateUniformDouble(generator, reinterpret_cast<double*>(*device_ptr), count));
   } else if (std::is_same<T, float>::value) {
-    curandGenerateUniform(generator, reinterpret_cast<float*>(*device_ptr), count);
+    CURAND_CHECK_MANAGER(curandGenerateUniform(generator, reinterpret_cast<float*>(*device_ptr), count));
   } else {
-    curandDestroyGenerator(generator);
+    CURAND_CHECK_MANAGER(curandDestroyGenerator(generator));
     throw std::runtime_error("Unsupported type for random number generation. Only float and double are supported.");
   }
-  
-  curandDestroyGenerator(generator);
+
+  CURAND_CHECK_MANAGER(curandDestroyGenerator(generator));
 }
 
 // Allocate device memory with Xavier/Glorot initialization
@@ -75,12 +110,18 @@ template<typename T>
 void allocate_device_memory_xavier(T** device_ptr, size_t count, size_t input_size, size_t output_size) {
   CUDA_CHECK_MANAGER(cudaMalloc(device_ptr, count * sizeof(T)));
 
-  curandGenerator_t gen;
-  curandCreateGenerator(&gen, CURAND_RNG_PSEUDO_DEFAULT);
-  curandSetPseudoRandomGeneratorSeed(gen, time(NULL));
+  curandGenerator_t gen = nullptr;
+  CURAND_CHECK_MANAGER(curandCreateGenerator(&gen, CURAND_RNG_PSEUDO_DEFAULT));
+  CURAND_CHECK_MANAGER(curandSetPseudoRandomGeneratorSeed(gen, static_cast<unsigned long long>(time(NULL))));
 
-  // Fill device array with floats in [0,1)
-  curandGenerateUniform(gen, *device_ptr, count);
+  if (std::is_same<T, double>::value) {
+    CURAND_CHECK_MANAGER(curandGenerateUniformDouble(gen, reinterpret_cast<double*>(*device_ptr), count));
+  } else if (std::is_same<T, float>::value) {
+    CURAND_CHECK_MANAGER(curandGenerateUniform(gen, reinterpret_cast<float*>(*device_ptr), count));
+  } else {
+    CURAND_CHECK_MANAGER(curandDestroyGenerator(gen));
+    throw std::runtime_error("Unsupported type for Xavier initialization. Only float and double are supported.");
+  }
 
   float scale = sqrtf(6.0f / (input_size + output_size));
 
@@ -93,7 +134,7 @@ void allocate_device_memory_xavier(T** device_ptr, size_t count, size_t input_si
 
   CUDA_CHECK_MANAGER(cudaGetLastError());
 
-  curandDestroyGenerator(gen);
+  CURAND_CHECK_MANAGER(curandDestroyGenerator(gen));
 }
 
 // Weights are initialized uniformly in [-scale, scale] where scale = sqrt(2.0 / input_size)
@@ -101,25 +142,27 @@ template<typename T>
 void allocate_device_memory_he(T** device_ptr, size_t count, size_t input_size) {
   CUDA_CHECK_MANAGER(cudaMalloc(device_ptr, count * sizeof(T)));
 
-  curandGenerator_t gen;
-  curandCreateGenerator(&gen, CURAND_RNG_PSEUDO_DEFAULT);
-  curandSetPseudoRandomGeneratorSeed(gen, time(NULL));
+  curandGenerator_t gen = nullptr;
+  synchronize();
+  CURAND_CHECK_MANAGER(curandCreateGenerator(&gen, CURAND_RNG_PSEUDO_DEFAULT));
+  CURAND_CHECK_MANAGER(curandSetPseudoRandomGeneratorSeed(gen, static_cast<unsigned long long>(time(NULL))));
 
-  // Fill device array with floats in [0,1)
-  curandGenerateUniform(gen, *device_ptr, count);
+  if (std::is_same<T, double>::value) {
+    CURAND_CHECK_MANAGER(curandGenerateUniformDouble(gen, reinterpret_cast<double*>(*device_ptr), count));
+  } else if (std::is_same<T, float>::value) {
+    CURAND_CHECK_MANAGER(curandGenerateUniform(gen, reinterpret_cast<float*>(*device_ptr), count));
+  } else {
+    CURAND_CHECK_MANAGER(curandDestroyGenerator(gen));
+    throw std::runtime_error("Unsupported type for He initialization. Only float and double are supported.");
+  }
 
   float scale = sqrtf(2.0f / input_size); // He initialization
-
   int num_blocks = (count + THREADS_PER_BLOCK - 1) / THREADS_PER_BLOCK;
-
   dim3 grid(num_blocks);
   dim3 block(THREADS_PER_BLOCK);
-
   scale_weights<<<grid, block>>>(*device_ptr, count, scale);
-
   CUDA_CHECK_MANAGER(cudaGetLastError());
-
-  curandDestroyGenerator(gen);
+  CURAND_CHECK_MANAGER(curandDestroyGenerator(gen));
 }
 
 // Set device memory to zero

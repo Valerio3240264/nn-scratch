@@ -1,0 +1,29 @@
+# Profiling(to fix)
+PROFILE_CE_TEST = $(BUILD_DIR)/test/profile_backward_cross_entropy_loss_kernel_simple.o
+
+# Profiling(to fix)
+PROFILE_CE_EXE = $(BIN_DIR)/profile_backward_cross_entropy_loss_kernel_simple.exe
+
+#-------------------------
+# Profiling config (ncu)(to fix)
+#-------------------------
+NCU ?= /usr/local/NVIDIA-Nsight-Compute-2026.1/ncu
+NCU_FLAGS ?= --set full --target-processes all --force-overwrite
+PROFILE_REPORT_DIR ?= profiling
+PROFILE_REPORT_BASENAME ?= profile_backward_cross_entropy_loss_kernel_simple
+
+# Profiling(to fix)
+$(PROFILE_CE_EXE): $(CPU_OBJ) $(CUDA_OBJ) $(KERNEL_OBJ) $(PROFILE_CE_TEST)
+	$(NVCC) $(NVCCFLAGS) $^ -lcurand -o $@
+
+.PHONY: profile_ce_build profile_ce_ncu
+profile_ce_build: $(PROFILE_CE_EXE)
+
+profile_ce_ncu: $(PROFILE_CE_EXE)
+	mkdir -p $(PROFILE_REPORT_DIR)
+	sudo $(NCU) $(NCU_FLAGS) -o $(PROFILE_REPORT_DIR)/$(PROFILE_REPORT_BASENAME) $(PROFILE_CE_EXE)
+
+
+nvcc -std=c++17 -O2 -use_fast_math -rdc=true -I. test/correctness/test_matmul_kernel.cu utils/MatricesOp.cpp -o bin/test_matmul_kernel.exe && ./bin/test_matmul_kernel.exe
+nvcc -std=c++17 -O2 -use_fast_math -rdc=true -I. test/correctness/test_matmul_transpose1_kernel.cu utils/MatricesOp.cpp -o bin/test_matmul_transpose1_kernel.exe && ./bin/test_matmul_transpose1_kernel.exe
+nvcc -std=c++17 -O2 -use_fast_math -rdc=true -I. test/correctness/test_matmul_transpose2_kernel.cu utils/MatricesOp.cpp -o bin/test_matmul_transpose2_kernel.exe && ./bin/test_matmul_transpose2_kernel.exe

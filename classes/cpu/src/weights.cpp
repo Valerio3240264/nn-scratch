@@ -1,5 +1,6 @@
 #include "../headers/weights.h"
 #include "../../enums.h"
+#include "../../../utils/MatricesOp.h"
 
 #include <iostream>
 #include <cstdlib>
@@ -92,16 +93,15 @@ float *weights::grad_bias_pointer(){
 
 /* METHODS */
 // Forward pass
-// W x Input + b
+// x*W + b
 void weights::operator()(BackwardClass *in, float *output_pointer){
   this->input_values = in->values_pointer();
   this->pred = in;
-  for (int row = 0; row < this->output_size; row++){
-    output_pointer[row] = this->b[row];
-    for(int col = 0; col< this->input_size; col++){
-      output_pointer[row] += this->w[row * this->input_size + col] * this->input_values[col];
-    }
-  }
+
+  // X*W + b
+  // X dimension: input_size (no batch dimension)
+  MultiplyAndAdd(this->input_values, this->w, this->b, output_pointer, 1, this->input_size, this->output_size);
+
   return;
 }
 
@@ -119,17 +119,23 @@ void weights::zero_grad(){
 // Backward pass
 void weights::backward(float *derivatives){
   float *prevGrad = new float[this->input_size];
-  for(int col = 0; col < this->input_size; col++){
-    prevGrad[col] = 0;
-    for(int row = 0; row< this->output_size; row++){
-      prevGrad[col] += derivatives[row] * this->w[row * this->input_size + col];
-      this->grad_w[row * this->input_size + col] += derivatives[row] * this->input_values[col];
-    }
-  }
 
-  for(int row = 0; row < this->output_size; row++){
-    this->grad_b[row] += derivatives[row];
-  }
+  // Weights gradient:
+  // dL/dW = X^T * dL/dY
+  // X dimension: 1 x input_size (no batch dimension)
+  InPlaceMultiplyAndAdd(this->input_values, derivatives, this->grad_w, this->input_size, 1, this->output_size);
+  
+  // Input gradient:
+  // dL/dX = dL/dY * W^T
+  // W dimension: output_size x input_size
+  // dL/dY dimension: output_size (no batch dimension)
+  Multiply_Transposed(derivatives, this->w, prevGrad, 1, this->output_size, this->input_size);
+
+  // Bias gradient:
+  // dL/db = dL/dY
+  // dL/dY dimension: output_size (no batch dimension)
+  InPlaceMatrix_Add(this->grad_b, derivatives, this->output_size, 1);
+
   this->pred->backward(prevGrad);
   delete[] prevGrad;
 }
@@ -147,8 +153,7 @@ void weights::update(float learning_rate){
 /* TESTING FUNCTIONS */
 // Print the weights
 void weights::print_weights(){
-  for (int i = 0; i < this->input_size * this->output_size; i++)
-  {
+  for (int i = 0; i < this->input_size * this->output_size; i++){
     cout << this->w[i] << " ";
   }
   cout << endl;

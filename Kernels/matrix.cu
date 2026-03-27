@@ -2,6 +2,243 @@
 
 #include <stdio.h>
 #include <assert.h>
+/* MATRIX MULTIPLICATION KERNELS */
+
+/* A * B KERNEL*/
+// A: N x K
+// B: K x M
+// R: N x M
+template<const uint BN, const uint BK, const uint BM, const uint RN, const uint RM>
+__global__ void matmul(float *__restrict__ A, float *__restrict__ B, float *__restrict__ R, int N, int M, int K){
+  __shared__ float As[BN * BK];
+  __shared__ float Bs[BK * BM];  
+  
+  uint Rrow = blockidx.x / (M / BM);
+  uint Rcol = blockidx.x % (M / BM);
+
+  float regA[BN] = {0.0f};
+  float regB[BM] = {0.0f};
+  float res[RN * RM] = {0.0f};
+
+  uint RregRow = threadidx.x / (BM / RM);
+  uint RregCol = threadidx.x % (BM / RM);
+
+  A += Rrow * BN * K;
+  B += Rcol * BM;
+  R += Rrow * BN * M + Rcol * BM;
+
+  // Load from Gmem to Smem As and Bs
+  for(uint l = 0; l < K; l+=BK){
+
+    // Load from Gmem to Smem As
+    for(uint sIdx = threadidx.x; sIdx < BN * BK / 4; sIdx += blockdimx.x){
+      uint innerRow = sIdx / (BK / 4);
+      uint innerCol = sIdx % (BK / 4); 
+      float4 tmp 
+        = reinterpret_cast<float4 *>(&A[innerRow *K + innerCol * 4])[0];
+
+      As[(innerCol * 4 + 0) * BN + innerRow] = tmp.x;
+      As[(innerCol * 4 + 1) * BN + innerRow] = tmp.y;
+      As[(innerCol * 4 + 2) * BN + innerRow] = tmp.z;
+      As[(innerCol * 4 + 3) * BN + innerRow] = tmp.w;
+    }
+
+    // Load from Gmem to Smem Bs
+    // Load from Gmem to Smem As
+    for(uint sIdx = threadidx.x; sIdx < BK * BM / 4; sIdx += blockdimx.x){
+      uint innerRow = sIdx / (BM / 4);
+      uint innerCol = sIdx % (BM / 4);
+      reinterpret_cast<float4 *>(&Bs[innerRow * BM + innerCol *4])[0] 
+        = reinterpret_cast<float4 *>(&B[innerRow * M + innerCol * 4])[0];
+    }
+
+    __syncthreads();
+    A += BK;        // moves BK columns right
+    B += BK * M;    // moves BK rows down
+
+    for(int h = 0; h < BK; h++){
+      for(int iA = 0; iA < RN; iA ++){
+        regA[iA] = As[h * BN + RN * RregRow + iA];
+      }
+      for(int iB = 0; iB < RM; iB ++){
+        regB[iB] = Bs[h * BM + RM * RregCol + iB];
+      }
+
+      for(int i = 0; i < RN; i++){
+        for(int j = 0; j < RM; j++){
+          res[i*RM + j] += regA[i] * regB[j];
+        }
+      }
+    }
+    __syncthreads();
+  }
+
+  R += RregRow * RN * M + RregCol * RM;
+
+  for(int i = 0; i < RN; i++){
+    for(int j = 0; j < RM; j++){
+      R[i * M + j] = res[i * RM + j];
+    }
+  }
+}
+
+/* A^T * B KERNEL */
+// A: K x N
+// B: K x M
+// R: N x M
+template<const uint BN, const uint BK, const uint BM, const uint RN, const uint RM>
+__global__ void matmul_transpose1(float *__restrict__ A, float *__restrict__ B, float *__restrict__ R, int N, int M, int K){
+  __shared__ float As[BN * BK];
+  __shared__ float Bs[BK * BM];  
+  
+  uint Rrow = blockidx.x / (M / BM);
+  uint Rcol = blockidx.x % (M / BM);
+
+  float regA[BN] = {0.0f};
+  float regB[BM] = {0.0f};
+  float res[RN * RM] = {0.0f};
+
+  uint RregRow = threadidx.x / (BM / RM);
+  uint RregCol = threadidx.x % (BM / RM);
+
+  A += Rrow * BN;
+  B += Rcol * BM;
+  R += Rrow * BN * M + Rcol * BM;
+
+  // Load from Gmem to Smem As and Bs
+  for(uint l = 0; l < K; l+=BK){
+
+    // Load from Gmem to Smem As
+    for(uint sIdx = threadidx.x; sIdx < BN * BK / 4; sIdx += blockdimx.x){
+      uint innerRow = sIdx / (BN / 4);
+      uint innerCol = sIdx % (BN / 4); 
+
+      reinterpret_cast<float4 *>(&As[innerRow * BN + innerCol * 4])[0]
+        = reinterpret_cast<float4 *>(&A[innerRow * N + innerCol * 4])[0];
+    }
+
+    // Load from Gmem to Smem Bs
+    // Load from Gmem to Smem As
+    for(uint sIdx = threadidx.x; sIdx < BK * BM / 4; sIdx += blockdimx.x){
+      uint innerRow = sIdx / (BM / 4);
+      uint innerCol = sIdx % (BM / 4);
+      reinterpret_cast<float4 *>(&Bs[innerRow * BM + innerCol *4])[0] 
+        = reinterpret_cast<float4 *>(&B[innerRow * M + innerCol * 4])[0];
+    }
+
+    __syncthreads();
+    A += BK * N;    // moves BK rows right
+    B += BK * M;    // moves BK rows down
+
+    for(int h = 0; h < BK; h++){
+      for(int iA = 0; iA < RN; iA ++){
+        regA[iA] = As[h * BN + RN * RregRow + iA];
+      }
+      for(int iB = 0; iB < RM; iB ++){
+        regB[iB] = Bs[h * BM + RM * RregCol + iB];
+      }
+
+      for(int i = 0; i < RN; i++){
+        for(int j = 0; j < RM; j++){
+          res[i*RM + j] += regA[i] * regB[j];
+        }
+      }
+    }
+    __syncthreads();
+  }
+
+  R += RregRow * RN * M + RregCol * RM;
+
+  for(int i = 0; i < RN; i++){
+    for(int j = 0; j < RM; j++){
+      R[i * M + j] = res[i * RM + j];
+    }
+  }
+}
+
+
+/* A * B^T KERNEL */
+// A: N x K
+// B: M x K
+// R: N x M
+template<const uint BN, const uint BK, const uint BM, const uint RN, const uint RM>
+__global__ void matmul_transpose2(float *__restrict__ A, float *__restrict__ B, float *__restrict__ R, int N, int M, int K){
+  __shared__ float As[BN * BK];
+  __shared__ float Bs[BK * BM];
+
+  uint Rrow = blockidx.x / (M / BM);
+  uint Rcol = blockidx.x % (M / BM);
+
+  float regA[BN] = {0.0f};
+  float regB[BM] = {0.0f};
+  float res[RN * RM] = {0.0f};
+
+  uint RregRow = threadidx.x / (BM / RM);
+  uint RregCol = threadidx.x % (BM / RM);
+
+  A += Rrow * BN * K;
+  B += Rcol * BM * K;
+  R += Rrow * BN * M + Rcol * BM;
+
+  // Load from Gmem to Smem As and Bs
+  for(uint l = 0; l < K; l += BK){
+    // Load from Gmem to Smem As
+    for(uint sIdx = threadidx.x; sIdx < BN * BK / 4; sIdx += blockdimx.x){
+      uint innerRow = sIdx / (BK / 4);
+      uint innerCol = sIdx % (BK / 4);
+      float4 tmp
+        = reinterpret_cast<float4 *>(&A[innerRow * K + innerCol * 4])[0];
+
+      As[(innerCol * 4 + 0) * BN + innerRow] = tmp.x;
+      As[(innerCol * 4 + 1) * BN + innerRow] = tmp.y;
+      As[(innerCol * 4 + 2) * BN + innerRow] = tmp.z;
+      As[(innerCol * 4 + 3) * BN + innerRow] = tmp.w;
+    }
+
+    // Load from Gmem to Smem Bs
+    for(uint sIdx = threadidx.x; sIdx < BK * BM / 4; sIdx += blockdimx.x){
+      uint innerRow = sIdx / BM;
+      uint innerCol = sIdx % BM;
+      float4 tmp
+        = reinterpret_cast<float4 *>(&B[innerCol * K + innerRow * 4])[0];
+
+      Bs[(innerRow * 4 + 0) * BM + innerCol] = tmp.x;
+      Bs[(innerRow * 4 + 1) * BM + innerCol] = tmp.y;
+      Bs[(innerRow * 4 + 2) * BM + innerCol] = tmp.z;
+      Bs[(innerRow * 4 + 3) * BM + innerCol] = tmp.w;
+    }
+
+    __syncthreads();
+    A += BK;  // moves BK columns right
+    B += BK;  // moves BK columns right in each B row
+
+    for(int h = 0; h < BK; h++){
+      for(int iA = 0; iA < RN; iA++){
+        regA[iA] = As[h * BN + RN * RregRow + iA];
+      }
+      for(int iB = 0; iB < RM; iB++){
+        regB[iB] = Bs[h * BM + RM * RregCol + iB];
+      }
+
+      for(int i = 0; i < RN; i++){
+        for(int j = 0; j < RM; j++){
+          res[i * RM + j] += regA[i] * regB[j];
+        }
+      }
+    }
+    __syncthreads();
+  }
+
+  R += RregRow * RN * M + RregCol * RM;
+
+  for(int i = 0; i < RN; i++){
+    for(int j = 0; j < RM; j++){
+      R[i * M + j] = res[i * RM + j];
+    }
+  }
+}
+
+
 /* WEIGHTS KERNELS */
 
 /* VECTORIZED SGEMV KERNEL */

@@ -80,7 +80,7 @@ void allocate_device_memory_zeros(T** device_ptr, size_t count);
 template<typename T>
 void allocate_device_memory_random(T** device_ptr, size_t count);
 template<typename T>
-void allocate_device_memory_xavier(T** device_ptr, size_t count, size_t input_size);
+void allocate_device_memory_xavier(T** device_ptr, size_t count, size_t input_size, size_t output_size);
 template<typename T>
 void allocate_device_memory_he(T** device_ptr, size_t count, size_t input_size);
 template<typename T>

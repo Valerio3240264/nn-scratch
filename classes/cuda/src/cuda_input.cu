@@ -14,7 +14,7 @@ cuda_input::cuda_input(int size){
   this->d_grad = nullptr;
   this->pred = nullptr;
 
-  allocate_device_memory_random<float>(&this->d_value, size);
+  allocate_device_memory_zeros<float>(&this->d_value, size);
   allocate_device_memory_zeros<float>(&this->d_grad, size);
 }
 
