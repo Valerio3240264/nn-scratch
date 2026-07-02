@@ -4,64 +4,55 @@
 #include "../../virtual_classes.h"
 #include "../../enums.h"
 
-/*TODO
-1: Create functions to evaluate the output and gradient of a whole batch.
-*/
-
 /*
-LAYER CLASS DOCUMENTATION:
-PURPOSE:
-This class is used to store the input(Input class), output(Activation_function class), weights(Weights class), input size, output size and activation function name of a layer.
+LAYER CLASS DOCUMENTATION
+Purpose:
+- Wraps one affine module (`W`) and one activation module (`out`).
+- Supports CPU and CUDA implementations behind shared virtual interfaces.
 
-Architecture:
-Input -> Weights -> Activation_function -> Output
+Execution model:
+- Forward: W->operator() then out->operator()
+- Backward: initiated from loss; gradients propagate through out -> W -> previous node
+- zero_grad() and update() delegate to W
 
-Attributes:
-- in: pointer to the input (Input class)
-- out: pointer to the output (Activation_function class)
-- W: pointer to the weights (Weights class)
-- input_size: size of the input
-- output_size: size of the output
-- function_name: name of the activation function
-
-Constructors:
-- layer(double input_size, double output_size, Activation_name activation_function): creates a new layer with the passed input size, output size and activation function name.
-
-Methods:
-- operator()(input *in): evaluates the output of the layer.
-- zero_grad(): sets all the gradients to 0.
-- update(double learning_rate): updates the weights using the computed gradients.
-- get_output(): returns the output of the layer.
-- print_weights(): prints the weights.
-- print_grad_weights(): prints the gradients of the weights.
-
+Connectivity:
+- set_input() rewires the predecessor of W at runtime.
+- get_output() exposes the activation node as the layer output.
 */
 
 using namespace std;
 
 class layer{
   private:
-    BackwardClass *in;
     ActivationClass *out;
     WeightsClass *W;
-    int input_size;
-    int output_size;
-    Activation_name function_name;
+    size_t input_size;
+    size_t output_size;
+    size_t batch_size;
     bool use_cuda;
 
   public:
-    layer(int input_size, int output_size, Activation_name function_name, bool use_cuda = false);
+    layer(size_t input_size, 
+          size_t output_size, 
+          size_t batch_size,
+          Activation_name function_name,
+          BackwardClass *input = nullptr,
+          bool use_cuda = false);
     ~layer();
 
     // Methods
-    void operator()(BackwardClass *in);
+    void operator()();
 
     // Backpropagation functions
     void zero_grad();
     void update(float learning_rate);
 
     // Getters
+    Activation_name get_function();
     BackwardClass *get_output();
+
+    // Setter
+    void set_input(BackwardClass *in);
 
     // Print functions
     void print_weights();

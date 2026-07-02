@@ -5,65 +5,56 @@
 
 using namespace std;
 
+// Check pred component matches dimensions
+void softmax::check_pred(){
+  if(this->pred == nullptr)
+    return;
+  else if(this->pred->get_output_size() != this->size){
+    throw invalid_argument("Pred component doesn't matches softmax size");
+    exit(1); 
+  }
+  else if(this->pred->get_batch_size() != this->batch_size){
+    throw invalid_argument("Pred component doesn't matches softmax batch_size");
+    exit(1); 
+  }
+  return;
+}
+
 /* CONSTRUCTORS AND DESTRUCTOR */
-// Constructor - allocates its own memory
-softmax::softmax(int size, BackwardClass *pred){
-  this->size = size;
-  this->value = new float[size];
-  this->pred = pred;
-  this->temperature = 1.0f;
-  this->grad = new float[size];
-  for(int i = 0; i < size; i++){
-    this->value[i] = 0.0f;
-    this->grad[i] = 0.0f;
-  }
-}
-
-// Constructor with temperature - allocates its own memory
-softmax::softmax(int size, float temperature, BackwardClass *pred){
-  this->size = size;
-  this->value = new float[size];
-  this->pred = pred;
-  this->temperature = temperature;
-  this->grad = new float[size];
-  for(int i = 0; i < size; i++){
-    this->value[i] = 0.0f;
-    this->grad[i] = 0.0f;
-  }
-}
-softmax::softmax(int size, float *value, BackwardClass *pred){
-  this->size = size;
-  this->value = value;
-  this->pred = pred;
-  this->temperature = 1.0f;
-  this->grad = new float[size];
-  for(int i = 0; i < size; i++){
-    this->grad[i] = 0.0f;
-  }
-}
-
 // Constructor with temperature
-softmax::softmax(int size, float *value, float temperature, BackwardClass *pred){
+softmax::softmax( size_t size, 
+                  size_t batch_size, 
+                  float temperature, 
+                  BackwardClass *pred){
   this->size = size;
-  this->value = value;
+  this->batch_size = batch_size;
+  this->values = new float[size * batch_size];
   this->temperature = temperature;
-  this->pred = pred;
-  this->grad = new float[size];
-  for(int i = 0; i < size; i++){
+  this->grad = new float[size * batch_size];
+  for(size_t i = 0; i < size*batch_size; i++){
+    this->values[i] = 0.0f;
     this->grad[i] = 0.0f;
   }
+
+  // Assign pointer and check
+  this->pred = pred;
+  this->check_pred();
 }
 
 // Destructor
 softmax::~softmax(){
   delete[] this->grad;
-  delete[] this->value;
+  delete[] this->values;
 }
 
 /* GETTERS */
+Activation_name softmax::get_activation_fun(){
+  return SOFTMAX;
+}
+
 // Get the values pointer
 float *softmax::values_pointer(){
-  return this->value;
+  return this->values;
 }
 
 // Get the gradient pointer
@@ -71,115 +62,132 @@ float *softmax::grad_pointer(){
   return this->grad;
 }
 
-int softmax::get_prediction(){
-  if(this->value == nullptr){
-    return -1;
-  }
-
-  int max_val_indx = 0;
-  for(int i = 1; i < this->size; i++){
-    if(this->value[i] > this->value[max_val_indx]){
-      max_val_indx = i;
-    }
-  }
-  return max_val_indx;
+// Get temperature
+float softmax::get_temperature(){
+  return this->temperature;
 }
 
-float softmax::get_prediction_probability(int index){
-  if(this->value == nullptr){
-    return 0.0f;
+// Recive and array and populates it with the guesses
+void softmax::get_predictions(size_t *predictions){
+  for(size_t row = 0; row < this->batch_size; row++){
+    size_t max_idx = 0;
+    float *row_values = this->values + row * this->size;
+    for(size_t col = 1; col < this->size; col++){
+      if(row_values[col] > row_values[max_idx]){
+        max_idx = col;
+      }
+    }
+    predictions[row] = max_idx;
   }
-  return this->value[index];
+}
+
+// Get size
+size_t softmax::get_output_size(){
+  return this->size;
+}
+
+// Get batch_size
+size_t softmax::get_batch_size(){
+  return this->batch_size;
 }
 
 /* SETTERS */
-// Set the value
-void softmax::set_value(float *value){
-  this->value = value ? value : nullptr;
+// Set pred pointer
+void softmax::set_pred(BackwardClass *pred){
+  this->pred = pred;
+  this->check_pred();
 }
 
-// Copy values
-void softmax::copy_values(float *value){
-  for(int i = 0; i < this->size; i++){
-    this->value[i] = value[i];
-  }
-}
 /* METHODS */
-// Operator to apply the softmax function
 void softmax::operator()(){
-
-  if(this->value == nullptr){
-    cout<<"Error: value is not set"<<endl;
+  if(this->pred == nullptr){
+    throw invalid_argument("Error: can't compute forward pass without softmax pred component.");
     exit(1);
-    return;
   }
+  this->check_pred();
+  float *pred_values = this->pred->values_pointer();
 
-  float max_val = this->value[0];
-  float Z = 0.f;
+  for(size_t row = 0; row < batch_size; row++){
+    pred_values += row != 0 ? this->size : 0;
+    float *Crow_values = this->values + row * this->size;
+    float max_val = pred_values[0];
+    float Z = 0.f;
 
-  // Calculate max value and Z in the same cycle
-  for(int i = 0; i< this->size; i++){
-    if(this->value[i] > max_val){
-      Z *= expf((max_val - this->value[i])/this->temperature );
-      max_val = this->value[i];
+    // Calculate max value and Z in the same cycle
+    for(size_t i = 0; i < this->size; i++){
+      if(pred_values[i] > max_val){
+        Z *= expf((max_val - pred_values[i]) / this->temperature);
+        max_val = pred_values[i];
+      }
+      Z += expf((pred_values[i] - max_val) / this->temperature);
     }
-    Z += expf((this->value[i] - max_val)/this->temperature);
-  }
-  
-  // Normalize
-  for(int i = 0; i < this->size; i++){
-    this->value[i] = expf((this->value[i] - max_val) / this->temperature) / Z;
+
+    // Normalize each row
+    for(size_t i = 0; i < this->size; i++){
+      Crow_values[i] = expf((pred_values[i] - max_val) / this->temperature) / Z;
+    }
   }
 }
 
 // Zero the gradient
 void softmax::zero_grad(){
-  return;
+  for(size_t i = 0; i < this->size * this->batch_size; i++){
+    this->grad[i] = 0;
+  }
 }
 
-// Backward pass
-void softmax::backward(float *derivatives){
-  if(this->value == nullptr){
-    cout<<"Error: value is not set"<<endl;
+void softmax::backward(){
+  if(this->pred == nullptr){
+    throw invalid_argument("Error: can't compute forward pass without softmax pred component.");
     exit(1);
-    return;
   }
-  float dot = 0.0f;
-  for (int k = 0; k < this->size; ++k) {
-    dot += this->value[k] * derivatives[k];
+  this->check_pred();
+  float *pred_grad = this->pred->grad_pointer();
+  
+  for(size_t row = 0; row < batch_size; row++){
+    float *row_values = this->values + row * this->size;
+    float *row_derivatives = this->grad + row * this->size;
+    pred_grad += row != 0 ? this->size : 0;
+
+    float dot = 0.0f;
+    for (size_t k = 0; k < this->size; ++k) {
+      dot += row_values[k] * row_derivatives[k];
+    }
+
+    for (size_t j = 0; j < this->size; ++j) {
+      pred_grad[j] = row_values[j] * (row_derivatives[j] - dot) / this->temperature;
+    }
   }
 
-  for (int j = 0; j < this->size; ++j) {
-    this->grad[j] = this->value[j] * (derivatives[j] - dot) / this->temperature;
-  }
-
-  if (this->pred) {
-    this->pred->backward(this->grad);
-  }
+  this->pred->backward();
 }
 
 /* TESTING FUNCTIONS */
 // Print the values
 void softmax::print_value(){
-  if(this->value == nullptr){
+  if(this->values == nullptr){
     cout<<"Error: value is not set"<<endl;
     exit(1);
     return;
   }
-  for(int i = 0; i < this->size; i++){
-    std::cout << this->value[i] << " ";
+  for(size_t i = 0; i < this->size * this->batch_size; i++){
+    if(i % this->size == 0)
+      std::cout<<endl;
+    std::cout << this->values[i] << " ";
   }
   std::cout << std::endl;
 }
 
 // Print the gradient
 void softmax::print_grad(){
-  if(this->value == nullptr){
+  if(this->values == nullptr){
     cout<<"Error: value is not set"<<endl;
     exit(1);
     return;
   }
-  for(int i = 0; i < this->size; i++){
+  for(size_t i = 0; i < this->size * this->batch_size; i++){
+    if(i % this->size == 0)
+      std::cout<<endl;
     std::cout << this->grad[i] << " ";
   }
   std::cout << std::endl;

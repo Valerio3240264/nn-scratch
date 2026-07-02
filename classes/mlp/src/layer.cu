@@ -1,10 +1,13 @@
 #include "../headers/layer.h"
 
 #include <iostream>
+#include <cstddef>
 
 #include "../../cpu/headers/weights.h"
 #include "../../cpu/headers/input.h"
 #include "../../cpu/headers/activation.h"
+#include "../../virtual_classes.h"
+#include "../../enums.h"
 
 #ifdef __CUDACC__
 #include "../../cuda/cuda_manager.cuh"
@@ -18,31 +21,33 @@ using namespace std;
 
 /* CONSTRUCTOR AND DESTRUCTOR */
 // Constructor
-layer::layer(int input_size, int output_size, Activation_name function_name, bool use_cuda){
+layer::layer( size_t input_size,
+              size_t output_size,
+              size_t batch_size,
+              Activation_name function_name,
+              BackwardClass *input,
+              bool use_cuda){
   if(use_cuda){
   #ifdef __CUDACC__
     this->input_size = input_size;
     this->output_size = output_size;
-    this->W = new cuda_weights(input_size, output_size, function_name);
-    this->function_name = function_name;
-    this->in = nullptr;
-    float *output_buffer;
-    allocate_device_memory<float>(&output_buffer, output_size);
-    this->out = new cuda_activation(output_size, output_buffer, function_name, this->W);
+    this->batch_size = batch_size;
+    this->W = new cuda_weights(input_size, output_size, batch_size, function_name, input, nullptr);
+    this->out = new cuda_activation(output_size, batch_size, function_name, this->W);
+    this->W->set_next(this->out);
     this->use_cuda = use_cuda;
   #else
-    cout<<"Error: CUDA not available. Compile with nvcc."<<endl;
+    throw invalid_argument("__CUDACC__ not defined.");
     exit(1);
   #endif
   }
   else{
     this->input_size = input_size;
     this->output_size = output_size;
-    this->W = new weights(input_size, output_size, function_name);
-    this->function_name = function_name;
-    this->in = nullptr;
-    float *output_buffer = new float[output_size];
-    this->out = new activation(output_size, output_buffer, function_name, this->W);
+    this->batch_size = batch_size;
+    this->W = new weights(input_size, output_size, batch_size, function_name, input, nullptr);
+    this->out = new activation(output_size, batch_size, function_name, this->W);
+    this->W->set_next(this->out);
     this->use_cuda = use_cuda;
   }
 }
@@ -50,26 +55,19 @@ layer::layer(int input_size, int output_size, Activation_name function_name, boo
 // Destructor
 layer::~layer(){
   delete this->W;
-  if(this->out != nullptr){
-    delete this->out;
-  }
+  delete this->out;
 }
 
 /* METHODS */
 // Operator to evaluate the output
-void layer::operator()(BackwardClass *in){
-  this->in = in;
-  float *out_buffer = this->out->values_pointer();
-  (*this->W)(in, out_buffer);
+void layer::operator()(){
+  this->W->operator()();
   this->out->operator()();
 }
 
 // BACKPROPAGATION FUNCTIONS
 void layer::zero_grad(){
   this->W->zero_grad();
-  if(this->out != nullptr){
-    this->out->zero_grad();
-  }
 }
 
 void layer::update(float learning_rate){
@@ -79,6 +77,15 @@ void layer::update(float learning_rate){
 /* GETTERS */
 BackwardClass *layer::get_output(){
   return this->out;
+}
+
+Activation_name layer::get_function(){
+  return this->out->get_activation_fun();
+}
+
+/* SETTERS */
+void layer::set_input(BackwardClass *in){
+  this->W->set_pred(in);
 }
 
 /* PRINT FUNCTIONS */

@@ -1,69 +1,69 @@
 #ifndef ACTIVATION_H
 #define ACTIVATION_H
 
+#include <cstddef>
 #include "../../enums.h"
 #include "../../virtual_classes.h"
 
-/*TODO
-1: Create a function to evaluate the output of a whole batch.
-2: Create a function to evaluate the gradient of a whole batch.
-*/
-
 /*
-ACTIVATION FUNCTION CLASS DOCUMENTATION:
-PURPOSE:
-This class is used to store the values and gradients of the activation_function performed on the weighted sum of the previous layer.
-It also stores the name of the activation function and the predecessor pointer to perform the backward pass on the whole neural network.
-This class stores the values and when it is called it will apply the activation function to the values array.
+ACTIVATION CLASS DOCUMENTATION
+Purpose:
+- CPU activation node applied after an affine transform.
+- Stores output values and dL/d(output) for a full batch.
 
-Attributes:
-- size: size of the values and gradients arrays
-- value: pointer to the values array
-- grad: pointer to the gradients array
-- pred: pointer to the predecessor (this pointer can be seen as an edge in the computational graph of the neural network)
-- function_name: name of the activation function
+Current implementation details:
+- Supported functions: TANH, RELU, LINEAR.
+- operator() applies the activation in-place on `value`.
+- backward() transforms `grad` into dL/d(input) using current `value`,
+  then propagates to pred->backward().
 
-Constructors:
-- activation_function(int size, float *value, Activation_name function_name, BackwardClass *pred): creates a new array for the values and gradients arrays and sets the predecessor to the passed pointer.
-
-Methods:
-- values_pointer(): returns the pointer to the values array.
-- grad_pointer(): returns the pointer to the gradients array.
-- operator()(): applies the activation function to the values array.
-- zero_grad(): sets all the gradients to 0.
-- backward(float *derivatives): accumulates the gradients and propagates them to the predecessor.
-- print_value(): prints the values array.
-- print_grad(): prints the gradients array.
-
+Memory and shape:
+- value and grad are owned buffers of size (batch_size * size).
+- pred is non-owning and must match size and batch_size.
 */
 
 class activation : public ActivationClass {
   private:
-    int size;
+    size_t size;
+    size_t batch_size;
     float *value;
     float *grad;
     BackwardClass *pred;
     Activation_name function_name;
 
+    // Check pred component matches dimensions
+    void check_pred();
+
   public:
     // Constructors
-    activation(int size, float *value, Activation_name function_name, BackwardClass *pred);
+    activation(
+      size_t size,
+      size_t batch_size,
+      Activation_name function_name,
+      BackwardClass *pred
+    );
     
     // Destructor
     ~activation();
     
     // Getters
+    Activation_name get_activation_fun() override;
     float *values_pointer() override;
     float *grad_pointer() override;
-    float get_value(int index);
-    float get_grad(int index);
+    float get_value(size_t index);
+    float get_grad(size_t index);
+    size_t get_output_size() override;
+    size_t get_batch_size() override;
+
+    // Setters
+    void set_pred(BackwardClass *pred);
 
     // Methods
     void operator()() override;
     
     // Backpropagation functions
     void zero_grad() override;
-    void backward(float * derivatives) override;
+    void backward() override;
     
     // Testing functions
     void print_value();

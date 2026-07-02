@@ -5,47 +5,44 @@
 
 using namespace std;
 
-/* CONSTRUCTORS */
-// Constructor - sets the predecessor pointer without target
-mse_loss::mse_loss(BackwardClass *pred, int size) {
-  this->pred = pred;
-  this->size = size;
-  this->grad = new float[size];
-  this->target = nullptr;
-  this->loss_value = 0.0f;
-  
-  for(int i = 0; i < size; i++) {
-    this->grad[i] = 0.0f;
+// Check pred component matches dimensions
+void mse_loss::check_pred(){
+  if(this->pred == nullptr)
+    return;
+  else if(this->pred->get_output_size() != this->size){
+    throw invalid_argument("Pred component doesn't matches mse_loss size");
+    exit(1); 
   }
+  else if(this->pred->get_batch_size() != this->batch_size){
+    throw invalid_argument("Pred component doesn't matches mse_loss batch_size");
+    exit(1); 
+  }
+  return;
 }
 
-// Constructor - sets the predecessor pointer and target
-mse_loss::mse_loss(BackwardClass *pred, int size, float *target) {
-  this->pred = pred;
+/* CONSTRUCTOR */
+mse_loss::mse_loss( size_t size, 
+                    size_t batch_size, 
+                    BackwardClass *pred) {
   this->size = size;
-  this->grad = new float[size];
-  this->target = target;
+  this->batch_size = batch_size;
+  this->target = new float[size * batch_size];
   this->loss_value = 0.0f;
-  
-  for(int i = 0; i < size; i++) {
-    this->grad[i] = 0.0f;
-  }
+
+  // Assign pointer and check
+  this->pred = pred;
+  this->check_pred();
 }
 
 /* DESTRUCTOR */
 mse_loss::~mse_loss() {
-  delete[] this->grad;
+  delete[] this->target;
 }
 
 /* GETTERS */
 // Get the values pointer of the current predecessor
 float *mse_loss::values_pointer() {
-  return this->pred->values_pointer();
-}
-
-// Get the gradient pointer
-float *mse_loss::grad_pointer() {
-  return this->grad;
+  return nullptr;
 }
 
 // Get the loss value
@@ -53,93 +50,96 @@ float mse_loss::get_loss() {
   return this->loss_value;
 }
 
+// Get size
+size_t mse_loss::get_size(){
+  return this->size;
+}
+
+// Get batch size
+size_t mse_loss::get_batch_size(){
+  return this->batch_size;
+}
+
+/* SETTERS */
+// Set pred pointer
+void mse_loss::set_pred(BackwardClass *pred){
+  this->pred = pred;
+  this->check_pred();
+}
+
 /* METHODS */
-// Forward pass with target array
 void mse_loss::operator()(float *target) {
-  if(this->target != nullptr){
-    delete[] this->target;
-    this->target = nullptr;
-  }
-  this->target = target;
-  this->operator()();
-}
 
-// Forward with class index (converts to one-hot encoding for MSE)
-void mse_loss::operator()(int target_index) {
-  if(target_index < 0 || target_index >= this->size) {
-    throw std::invalid_argument("Target index is out of bounds");
+  if(this->pred == nullptr){
+    throw invalid_argument("Error: can't compute mse loss without pred component.");
+    exit(1);
   }
-  
-  // Convert target_index to one-hot encoding
-  if(this->target != nullptr) {
-    delete[] this->target;
-  }
-  this->target = new float[this->size];
-  for(int i = 0; i < this->size; i++) {
-    this->target[i] = (i == target_index) ? 1.0f : 0.0f;
-  }
-  
-  this->operator()();
-}
+  this->check_pred();
 
-// Forward with stored target
-void mse_loss::operator()() {
+  // Evaluate the loss
   float *predictions = this->pred->values_pointer();
   this->loss_value = 0.0f;
-
-  for(int i = 0; i < this->size; i++) {
+  for(size_t i = 0; i < this->size * this->batch_size; i++) {
+    this->target[i] = target[i];
     float diff = predictions[i] - this->target[i];
     this->loss_value += diff * diff;
   }
-  this->loss_value /= this->size;
+  this->loss_value /= static_cast<float>(this->size);
 }
 
-// Zero the gradient
-void mse_loss::zero_grad() {
-  for(int i = 0; i < this->size; i++) {
-    this->grad[i] = 0.0f;
-  }
-}
+// Forward with class indices (converts to one-hot encoding for MSE)
+void mse_loss::operator()(size_t* target_indices) {
 
-// Backward pass with incoming derivatives
-void mse_loss::backward(float *derivatives) {
-  if(this->target == nullptr) {
-    throw std::invalid_argument("No target set for backward pass");
+  if(this->pred == nullptr){
+    throw invalid_argument("Error: can't compute mse loss without pred component.");
+    exit(1);
   }
-  
+  this->check_pred();
+
+  // One hot encoding
+  for(size_t row = 0; row < this->batch_size; row++){
+    int idx = target_indices[row];
+    if(idx < 0 || idx >= static_cast<int>(this->size)) {
+      throw std::invalid_argument("Target index is out of bounds");
+    }
+    for(size_t col = 0; col < this->size; col++){
+      this->target[row * this->size + col] = (static_cast<int>(col) == idx) ? 1.0f : 0.0f;
+    }
+  }
+
   float *predictions = this->pred->values_pointer();
-  
-  for(int i = 0; i < this->size; i++) {
-    this->grad[i] = (2.0f / this->size) * (predictions[i] - this->target[i]) * derivatives[i];
+  this->loss_value = 0.0f;
+  for(size_t i = 0; i < this->size * this->batch_size; i++) {
+    float diff = predictions[i] - this->target[i];
+    this->loss_value += diff * diff;
   }
-  
-  this->pred->backward(this->grad);
+  this->loss_value /= static_cast<float>(this->size);
 }
 
-// Backward pass with simplified gradient (assumes derivative of loss w.r.t. itself is 1)
+//Backward function
+// Writes the partial derivatives in the grad of the previous component and calls it
 void mse_loss::backward() {
-  if(this->target == nullptr) {
-    throw std::invalid_argument("No target set for backward pass");
-  }
   
+  if(this->pred == nullptr){
+    throw invalid_argument("Error: can't compute mse loss backward without pred component.");
+    exit(1);
+  }
+  this->check_pred();
+  
+  size_t elements = batch_size * this->size;
+
+  // dL/dy for L = (1/size) * sum_{batch,dim} (y - t)^2
+  float norm = 2.0f / static_cast<float>(this->size);
   float *predictions = this->pred->values_pointer();
-  
-  for(int i = 0; i < this->size; i++) {
-    this->grad[i] = (2.0f / this->size) * (predictions[i] - this->target[i]);
+  float *pred_grad = this->pred->grad_pointer();
+  for(size_t i = 0; i < elements; i++) {
+    pred_grad[i] = norm * (predictions[i] - this->target[i]);
   }
   
-  this->pred->backward(this->grad);
+  this->pred->backward();
 }
 
 /* TESTING FUNCTIONS */
 void mse_loss::print_loss() {
   std::cout << "MSE Loss: " << this->loss_value << std::endl;
-}
-
-void mse_loss::print_grad() {
-  std::cout << "Gradients: ";
-  for(int i = 0; i < this->size; i++) {
-    std::cout << this->grad[i] << " ";
-  }
-  std::cout << std::endl;
 }

@@ -218,6 +218,36 @@ $A_{ij} \leftarrow A_{ij} + B_{ij}$
 
 ---
 
+### `InPlaceVector_Add_Matrix(A, B, N, M)`
+
+Computes in-place:
+
+$A \leftarrow A + B$
+
+Element-wise:
+
+$A_{i} \leftarrow A_{i} + \sum_{j=0}^{M-1} B_{ij}$
+
+$A \in \mathbb{R}^{N}$
+$B \in \mathbb{R}^{N \times M}$
+
+---
+
+### `InPlaceVector_Add_MatrixT(A, B, N, M)`
+
+Computes in-place:
+
+$A \leftarrow A + B^T$
+
+Element-wise:
+
+$A_{i} \leftarrow A_{i} + \sum_{j=0}^{M-1} B_{ji}$
+
+$A \in \mathbb{R}^{N}$
+$B \in \mathbb{R}^{M \times N}$
+
+---
+
 ## Why this utility exists
 
 This utility centralizes low-level matrix math so weight class can focus on model logic (forward, backward, parameter updates) instead of repeating indexing and loop code.

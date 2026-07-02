@@ -5,114 +5,85 @@
 #include <vector>
 
 #include <cuda_runtime.h>
-#include "../utils/MatricesOp.h"
+#include "../../utils/MatricesOp.h"
 
-#define CUDA_CHECK(call)                                                          \
-  do {                                                                            \
-    cudaError_t err__ = (call);                                                   \
-    if (err__ != cudaSuccess) {                                                   \
-      std::cerr << "CUDA error at " << __FILE__ << ":" << __LINE__ << " -> "     \
-                << cudaGetErrorString(err__) << std::endl;                        \
-      return 1;                                                                    \
-    }                                                                             \
+#define CUDA_CHECK(call) \
+  do { \
+    cudaError_t error = call; \
+    if (error != cudaSuccess) { \
+      std::cerr << cudaGetErrorString(error) << std::endl; \
+      return 1; \
+    } \
   } while (0)
 
-// Adapt local aliases used by Kernels/matrix.cu.
-#define blockidx blockIdx
-#define threadidx threadIdx
-#define blockdimx blockDim
-#include "../Kernels/matrix.cu"
-#undef blockidx
-#undef threadidx
-#undef blockdimx
+#include "../../Kernels/matrix.cu"
+
+namespace {
+
+int run_case(int rows, int inner, int cols, std::mt19937& random) {
+  const size_t A_size = static_cast<size_t>(inner) * rows;
+  const size_t B_size = static_cast<size_t>(inner) * cols;
+  const size_t result_size = static_cast<size_t>(rows) * cols;
+
+  std::uniform_real_distribution<float> distribution(-1.0f, 1.0f);
+  std::vector<float> A(A_size);
+  std::vector<float> B(B_size);
+  for (float& value : A) value = distribution(random);
+  for (float& value : B) value = distribution(random);
+
+  std::vector<float> expected(result_size);
+  Multiply_Transpose1(
+      A.data(), B.data(), expected.data(), rows, inner, cols);
+
+  float* device_A = nullptr;
+  float* device_B = nullptr;
+  float* device_result = nullptr;
+  CUDA_CHECK(cudaMalloc(&device_A, A_size * sizeof(float)));
+  CUDA_CHECK(cudaMalloc(&device_B, B_size * sizeof(float)));
+  CUDA_CHECK(cudaMalloc(&device_result, result_size * sizeof(float)));
+  CUDA_CHECK(cudaMemcpy(
+      device_A, A.data(), A_size * sizeof(float), cudaMemcpyHostToDevice));
+  CUDA_CHECK(cudaMemcpy(
+      device_B, B.data(), B_size * sizeof(float), cudaMemcpyHostToDevice));
+  CUDA_CHECK(cudaMemset(device_result, 0, result_size * sizeof(float)));
+
+  const dim3 block(16, 16);
+  const dim3 grid((cols + 15) / 16, (rows + 15) / 16);
+  tiled_matmul_transpose_left_accumulate<<<grid, block>>>(
+      device_A,
+      device_B,
+      device_result,
+      rows,
+      cols,
+      inner);
+  CUDA_CHECK(cudaGetLastError());
+  CUDA_CHECK(cudaDeviceSynchronize());
+
+  std::vector<float> actual(result_size);
+  CUDA_CHECK(cudaMemcpy(
+      actual.data(),
+      device_result,
+      result_size * sizeof(float),
+      cudaMemcpyDeviceToHost));
+
+  float max_error = 0.0f;
+  for (size_t i = 0; i < result_size; ++i) {
+    max_error = std::max(max_error, std::fabs(actual[i] - expected[i]));
+  }
+
+  CUDA_CHECK(cudaFree(device_A));
+  CUDA_CHECK(cudaFree(device_B));
+  CUDA_CHECK(cudaFree(device_result));
+
+  std::cout << "transpose-left max error: " << max_error << std::endl;
+  return max_error < 1e-3f ? 0 : 1;
+}
+
+}  // namespace
 
 int main() {
-  // User-requested matrix sizes.
-  constexpr int N = 4096;  // A^T rows / C rows
-  constexpr int K = 1024;  // A rows / B rows
-  constexpr int M = 4096;  // B cols / C cols
-
-  // Parameters adjusted to fit 48KB shared memory/block.
-  constexpr int BN = 128;
-  constexpr int BK = 32;
-  constexpr int BM = 128;
-  constexpr int RN = 8;
-  constexpr int RM = 8;
-
-  // Consistent launch for RN/RM micro-tiling with BN/BM above.
-  constexpr int blocks = 1024;
-  constexpr int threads_per_block = 256;
-
-  // A is stored as K x N so kernel computes A^T (N x K) * B (K x M).
-  const size_t sizeA = static_cast<size_t>(K) * N;
-  const size_t sizeB = static_cast<size_t>(K) * M;
-  const size_t sizeC = static_cast<size_t>(N) * M;
-
-  int device_count = 0;
-  CUDA_CHECK(cudaGetDeviceCount(&device_count));
-  if (device_count <= 0) {
-    std::cerr << "No CUDA devices found." << std::endl;
-    return 1;
-  }
-  CUDA_CHECK(cudaSetDevice(0));
-
-  std::vector<float> hA(sizeA);
-  std::vector<float> hB(sizeB);
-
-  std::mt19937 rng(42);
-  std::uniform_real_distribution<float> dist(-1.0f, 1.0f);
-  for (size_t i = 0; i < sizeA; ++i) hA[i] = dist(rng);
-  for (size_t i = 0; i < sizeB; ++i) hB[i] = dist(rng);
-
-  float* dA = nullptr;
-  float* dB = nullptr;
-  float* dC = nullptr;
-
-  CUDA_CHECK(cudaMalloc(&dA, sizeA * sizeof(float)));
-  CUDA_CHECK(cudaMalloc(&dB, sizeB * sizeof(float)));
-  CUDA_CHECK(cudaMalloc(&dC, sizeC * sizeof(float)));
-
-  CUDA_CHECK(cudaMemcpy(dA, hA.data(), sizeA * sizeof(float), cudaMemcpyHostToDevice));
-  CUDA_CHECK(cudaMemcpy(dB, hB.data(), sizeB * sizeof(float), cudaMemcpyHostToDevice));
-  CUDA_CHECK(cudaMemset(dC, 0, sizeC * sizeof(float)));
-
-  std::cout << "Launching matmul_transpose1 with requested parameters..." << std::endl;
-  matmul_transpose1<BN, BK, BM, RN, RM><<<blocks, threads_per_block>>>(dA, dB, dC, N, M, K);
-
-  const cudaError_t launch_err = cudaGetLastError();
-  std::cout << "Kernel launch status: " << cudaGetErrorString(launch_err) << std::endl;
-
-  const cudaError_t sync_err = cudaDeviceSynchronize();
-  std::cout << "Kernel sync status: " << cudaGetErrorString(sync_err) << std::endl;
-
-  // Copy A, B, and kernel result C back to host for CPU reference check.
-  std::vector<float> hA_from_device(sizeA);
-  std::vector<float> hB_from_device(sizeB);
-  std::vector<float> hC_from_device(sizeC);
-  std::vector<float> hC_cpu(sizeC, 0.0f);
-
-  CUDA_CHECK(cudaMemcpy(
-      hA_from_device.data(), dA, sizeA * sizeof(float), cudaMemcpyDeviceToHost));
-  CUDA_CHECK(cudaMemcpy(
-      hB_from_device.data(), dB, sizeB * sizeof(float), cudaMemcpyDeviceToHost));
-  CUDA_CHECK(cudaMemcpy(
-      hC_from_device.data(), dC, sizeC * sizeof(float), cudaMemcpyDeviceToHost));
-
-  // CPU reference: R = A^T * B (row-major), using utils/MatricesOp.cpp
-  Multiply_Transpose1(hA_from_device.data(), hB_from_device.data(), hC_cpu.data(), N, K, M);
-
-  double max_abs_err = 0.0;
-  for (size_t i = 0; i < sizeC; ++i) {
-    const double gpu = static_cast<double>(hC_from_device[i]);
-    const double cpu = static_cast<double>(hC_cpu[i]);
-    const double abs_err = std::abs(gpu - cpu);
-    max_abs_err = std::max(max_abs_err, abs_err);
-  }
-
-  std::cout << "max_abs_err=" << max_abs_err << std::endl;
-
-  CUDA_CHECK(cudaFree(dA));
-  CUDA_CHECK(cudaFree(dB));
-  CUDA_CHECK(cudaFree(dC));
+  std::mt19937 random(42);
+  if (run_case(256, 128, 192, random) != 0) return 1;
+  if (run_case(253, 125, 189, random) != 0) return 1;
   return 0;
 }

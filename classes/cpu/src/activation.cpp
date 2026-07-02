@@ -5,26 +5,52 @@
 
 using namespace std;
 
+// Check pred component matches dimensions
+void activation::check_pred(){
+  if(this->pred == nullptr)
+    return;
+  else if(this->pred->get_output_size() != this->size){
+    throw invalid_argument("Pred component doesn't matches activation size");
+    exit(1); 
+  }
+  else if(this->pred->get_batch_size() != this->batch_size){
+    throw invalid_argument("Pred component doesn't matches activation batch_size");
+    exit(1); 
+  }
+  return;
+}
+
 /* CONSTRUCTORS AND DESTRUCTOR */
 // Constructor
-activation::activation(
-  int size, float *value, Activation_name function_name, BackwardClass *pred){
+activation::activation( size_t size, 
+                        size_t batch_size, 
+                        Activation_name function_name, 
+                        BackwardClass *pred){
   this->size = size;
-  this->value = value;
-  this->grad = new float[size];
-  for(int i = 0; i < size; i++){
-    this->grad[i] = 0;
-  }
+  this->batch_size = batch_size;
+  this->value = new float[size * batch_size];
+  this->grad = new float[size * batch_size];
   this->function_name = function_name;
+  for(size_t i = 0; i < size * batch_size; ++i){
+    grad[i] = 0.0f;
+  }
+
+  // Assing pointer and check
   this->pred = pred;
+  this->check_pred();
 }
 
 // Destructor
 activation::~activation(){
   delete[] this->grad;
+  delete[] this->value;
 }
 
 /* GETTERS */
+// Get the activation name
+Activation_name activation::get_activation_fun(){
+  return this->function_name;
+}
 
 // Get the values pointer
 float *activation::values_pointer(){
@@ -37,19 +63,42 @@ float *activation::grad_pointer(){
 }
 
 // Get the value at a specific index
-float activation::get_value(int index){
+float activation::get_value(size_t index){
   return this->value[index];
 }
 
 // Get the gradient at a specific index
-float activation::get_grad(int index){
+float activation::get_grad(size_t index){
   return this->grad[index];
+}
+
+// Get size
+size_t activation::get_output_size(){
+  return this->size;
+}
+
+// Get batch size
+size_t activation::get_batch_size(){
+  return this->batch_size;
+}
+
+/* SETTERS */
+// Set pred pointer
+void activation::set_pred(BackwardClass *pred){
+  this->pred = pred;
+  this->check_pred();
 }
 
 /* OPERATORS */
 // Operator to apply the activation function
 void activation::operator()(){
-  for(int i = 0; i < this->size; i++){
+  if(this->pred == nullptr){
+    throw invalid_argument("Error: can't compute forward pass without activation pred component.");
+    exit(1);
+  }
+  this->check_pred();
+  size_t elements = this->size * this->batch_size;
+  for(size_t i = 0; i < elements; i++){
     if(this->function_name == TANH){
       this->value[i] = tanhf(this->value[i]);
     }
@@ -68,34 +117,47 @@ void activation::operator()(){
 /* BACKPROPAGATION FUNCTIONS */
 // Zero the gradient
 void activation::zero_grad(){
-  for(int i = 0; i < this->size; i++){
+  size_t elements = this->size * this->batch_size;
+  for(size_t i = 0; i < elements; i++){
     this->grad[i] = 0.0f;
   }
 }
 
-// Backward pass
-void activation::backward(float *derivatives){
-  for(int i = 0; i < this->size; i++){
+// Backward pass with explicit batch size
+// Derivatives(size x batch_size)
+void activation::backward(){
+  if(this->pred == nullptr){
+    throw invalid_argument("Error: can't compute backward pass without activation pred component.");
+    exit(1);
+  }
+  this->check_pred();
+
+  size_t elements = this->size * batch_size;
+  for(size_t i = 0; i < elements; i++){
     if(this->function_name == TANH){
-      this->grad[i] = derivatives[i] * (1 - (this->value[i]* this->value[i]));
+      this->grad[i] = this->grad[i] * (1 - (this->value[i]* this->value[i]));
     }
     else if(this->function_name == RELU){
-      this->grad[i] = derivatives[i] * (this->value[i] > 0 ? 1 : 0);
+      this->grad[i] = this->grad[i] * (this->value[i] > 0 ? 1 : 0);
     }
     else if(this->function_name == LINEAR){
-      this->grad[i] = derivatives[i];
+      this->grad[i] = this->grad[i];
     }
     else{
       throw invalid_argument("Invalid activation function");
     }
   }
-  this->pred->backward(this->grad);
+  this->pred->backward();
 }
 
 /* TESTING FUNCTIONS */
 // Print the value
 void activation::print_value(){
-  for (int i = 0; i < size; i++){
+  size_t elements = this->size * this->batch_size;
+  for (size_t i = 0; i < elements; i++){
+    if(i % this->size == 0){
+      cout << endl;
+    }
     cout << this->value[i] << " ";
   }
   cout << endl;
@@ -103,7 +165,11 @@ void activation::print_value(){
 
 // Print the gradient
 void activation::print_grad(){
-  for (int i = 0; i < size; i++){
+  size_t elements = this->size * this->batch_size;
+  for (size_t i = 0; i < elements; i++){
+    if(i % this->size == 0){
+      cout << endl;
+    }
     cout << this->grad[i] << " ";
   }
   cout << endl;

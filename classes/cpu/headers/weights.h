@@ -1,44 +1,31 @@
 #ifndef WEIGHTS_H
 #define WEIGHTS_H
+#include <cstddef>
 #include "input.h"
 #include "../../virtual_classes.h"
 #include "../../enums.h"
 
 
-/* TODO 
-1: Create a function to evaluate to process a whole batch of data.
-2: Create a function to evaluate the gradient of a whole batch.
-*/
-
 /*
-WEIGHTS CLASS DOCUMENTATION:
-PURPOSE:
-This class is used to store the weights and biases of a layer and perform the affine transformation (Wx + b) between the weights and the input values.
-It also stores the gradients of the weights, biases, and input values to perform the backward pass on the whole neural network.
+WEIGHTS CLASS DOCUMENTATION
+Purpose:
+- CPU affine layer parameters: W and b.
+- Computes forward pass Y = XW + b for batched input.
+- Computes backward gradients for W, b, and predecessor input.
 
-Attributes:
-- w: pointer to the weights array
-- grad_w: pointer to the weight gradients array
-- b: pointer to the bias array
-- grad_b: pointer to the bias gradients array
-- input_size: size of the input values
-- output_size: size of the output values
-- input_values: pointer to the input values
-- pred: pointer to the predecessor (this pointer can be seen as an edge in the computational graph of the neural network)
+Initialization:
+- TANH/LINEAR -> Xavier uniform scale sqrt(6 / (in + out))
+- RELU        -> He uniform scale sqrt(2 / in)
 
-Constructors:
-- weights(int input_size, int output_size): creates arrays for weights, biases, and their gradients. Initializes weights with Xavier/Glorot initialization and biases to zero.
+Shapes:
+- w, grad_w: (input_size, output_size)
+- b, grad_b: (output_size)
+- pred values/grad: (batch_size, input_size)
+- next values/grad: (batch_size, output_size)
 
-Methods:
-- values_pointer(): returns the pointer to the weights array.
-- grad_pointer(): returns the pointer to the weight gradients array.
-- bias_pointer(): returns the pointer to the bias array.
-- grad_bias_pointer(): returns the pointer to the bias gradients array.
-- operator()(BackwardClass *in): performs the affine transformation (Wx + b) between the weights, input values, and biases.
-- zero_grad(): sets all the gradients (weights and biases) to 0.
-- backward(double *derivatives): accumulates the gradients for both weights and biases, and propagates them to the predecessor.
-- update(double learning_rate): updates the weights and biases using the computed gradients.
-- print_weights(), print_grad_weights(), print_bias(), print_grad_bias(): testing/debugging functions.
+Notes:
+- `pred` and `next` are required for forward/backward and validated by size.
+- backward() accumulates parameter grads and writes dL/dX to pred->grad_pointer().
 */
 
 class weights: public WeightsClass{
@@ -47,30 +34,54 @@ class weights: public WeightsClass{
     float *grad_w;
     float *b;
     float *grad_b;
-    int input_size;
-    int output_size;
-    float *input_values;
+    size_t input_size;
+    size_t output_size;
+    size_t batch_size;
     BackwardClass *pred;
+    BackwardClass *next;
 
     // Initialization based on the activation function name
     void init_weights(Activation_name function_name) override;
 
+    // Check pred component matches dimensions
+    void check_pred();
+
+    // Check next component matches dimensions
+    void check_next();
+
   public:
     // Constructors
-    weights(int input_size, int output_size, Activation_name function_name);
+    weights(size_t input_size, 
+            size_t output_size, 
+            size_t batch_size, 
+            Activation_name function_name,
+            BackwardClass *pred,
+            BackwardClass *next);
+    
     // Destructor
     ~weights();
+    
     // Getters
     float *values_pointer() override;
     float *grad_pointer() override;
     float *bias_pointer();
     float *grad_bias_pointer();
+    size_t get_input_size();
+    size_t get_output_size() override;
+    size_t get_batch_size() override;
+
+    // Setters
+    void set_pred(BackwardClass *pred) override;
+    void set_next(BackwardClass *next) override;
+
     // Methods
-    void operator()(BackwardClass * in, float *output_pointer) override;
+    void operator()() override;
+    
     // Backpropagation functions
     void zero_grad() override;
-    void backward(float *derivatives) override;
+    void backward() override;
     void update(float learning_rate);
+    
     // Testing functions
     void print_weights() override;
     void print_grad_weights() override;

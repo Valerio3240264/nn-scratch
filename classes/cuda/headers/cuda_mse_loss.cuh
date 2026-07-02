@@ -1,46 +1,50 @@
 #ifndef CUDA_MSE_LOSS_CUH
 #define CUDA_MSE_LOSS_CUH
 
+#include <cstddef>
 #include "../../virtual_classes.h"
 
 /*
-MSE LOSS CLASS DOCUMENTATION:
-PURPOSE:
-This class has the same purpose of the mse_loss class but it is used to store the values and gradients in device memory.
+CUDA MSE LOSS CLASS DOCUMENTATION
+Purpose:
+- Device MSE loss node that stores scalar loss and target tensor on GPU.
 
-Note: When using this class, we assume that each class that interacts with this class (in the raw layer) has memory allocated in device memory.
+Current behavior:
+- operator()(float* target): copies host target to device, computes loss.
+- operator()(size_t* target_indices): builds a batched one-hot target.
+- backward() computes the same normalized gradient as the CPU implementation.
+
+Ownership:
+- `target` may be owned by this class or externally provided (owns_target flag).
+
 */
 
 class cuda_mse_loss : public LossClass {
   private:
     BackwardClass *pred;
     float *target;
-    float *grad;
     float loss_value;
     float *d_loss_sum;
-    int size;
+    size_t size;
     bool has_target;  // Track if we have a target
     bool owns_target; // Track if we own the target memory
+    size_t batch_size;
 
   public:
     // Constructors
-    cuda_mse_loss(BackwardClass *pred, int size);
-    cuda_mse_loss(BackwardClass *pred, int size, float *target);
+    cuda_mse_loss(size_t size, size_t batch_size, BackwardClass *pred);
+    cuda_mse_loss(size_t size, size_t batch_size, BackwardClass *pred, float *target);
 
     // Destructor
     ~cuda_mse_loss();
 
     // Getters
     float *values_pointer() override;
-    float *grad_pointer() override;
     float get_loss() override;
 
     // Methods
     void operator()(float *target) override;
-    void operator()(int target_index) override;
-    void operator()() override;
-    void zero_grad() override;
-    void backward(float *derivatives) override;
+    void operator()(size_t* target_indices) override;
     void backward() override;
 };
 

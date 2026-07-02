@@ -10,6 +10,8 @@ NVCCFLAGS = -std=c++17 -O2 -use_fast_math -rdc=true -I.
 BUILD_DIR = build
 BIN_DIR = bin
 
+.PHONY: all run_cpu_batch_test test_mnist_cuda_batch clean
+
 #-------------------------
 # Sources and Objects
 #-------------------------
@@ -57,14 +59,14 @@ KERNEL_OBJ = $(patsubst %.cu,$(BUILD_DIR)/%.o,$(KERNEL_SRC))
 #-------------------------
 # Test files
 #-------------------------
-CPU_TEST = $(BUILD_DIR)/test/test_mnist_cpu.o
-GPU_TEST = $(BUILD_DIR)/test/test_mnist_gpu.o
+CPU_BATCH_TEST = $(BUILD_DIR)/test/test_mnist_cpu_batch.o
+CUDA_BATCH_TEST = $(BUILD_DIR)/test/test_mnist_cuda_batch.o
 
 #-------------------------
 # Executables
 #-------------------------
-CPU_EXE = $(BIN_DIR)/test_mnist_cpu.exe
-GPU_EXE = $(BIN_DIR)/test_mnist_gpu.exe
+CPU_BATCH_EXE = $(BIN_DIR)/test_mnist_cpu_batch.exe
+CUDA_BATCH_EXE = $(BIN_DIR)/test_mnist_cuda_batch.exe
 
 #-------------------------
 # Compile rules
@@ -72,32 +74,52 @@ GPU_EXE = $(BIN_DIR)/test_mnist_gpu.exe
 
 # Compile CPU objects
 $(BUILD_DIR)/%.o: %.cpp
+	@mkdir -p $(dir $@)
 	$(CXX) $(CXXFLAGS) -c $< -o $@
+
+# Compile test objects explicitly
+$(CPU_BATCH_TEST): test/test_mnist_cpu_batch.cpp
+	@mkdir -p $(dir $@)
+	$(CXX) $(CXXFLAGS) -c $< -o $@
+
+$(CUDA_BATCH_TEST): test/test_mnist_cuda_batch.cu
+	@mkdir -p $(dir $@)
+	$(NVCC) $(NVCCFLAGS) -c $< -o $@
 
 # Compile CUDA objects (for GPU build)
 $(BUILD_DIR)/%.o: %.cu
+	@mkdir -p $(dir $@)
 	$(NVCC) $(NVCCFLAGS) -c $< -o $@
 
 # Compile CPU MLP objects (treat .cu files as C++)
 $(BUILD_DIR)/classes/mlp/src/mlp_cpu.o: classes/mlp/src/mlp.cu
+	@mkdir -p $(dir $@)
 	$(CXX) $(CXXFLAGS) -x c++ -c $< -o $@
 
 $(BUILD_DIR)/classes/mlp/src/layer_cpu.o: classes/mlp/src/layer.cu
+	@mkdir -p $(dir $@)
 	$(CXX) $(CXXFLAGS) -x c++ -c $< -o $@
 
 #-------------------------
 # Build executables
 #-------------------------
-$(CPU_EXE): $(CPU_OBJ) $(MLP_CPU_OBJ) $(CPU_TEST)
+$(CPU_BATCH_EXE): $(CPU_OBJ) $(MLP_CPU_OBJ) $(CPU_BATCH_TEST)
+	@mkdir -p $(dir $@)
 	$(CXX) $(CXXFLAGS) $^ -o $@
 
-$(GPU_EXE): $(CPU_OBJ) $(CUDA_OBJ) $(MLP_GPU_OBJ) $(KERNEL_OBJ) $(GPU_TEST)
+$(CUDA_BATCH_EXE): $(CPU_OBJ) $(CUDA_OBJ) $(MLP_GPU_OBJ) $(KERNEL_OBJ) $(CUDA_BATCH_TEST)
+	@mkdir -p $(dir $@)
 	$(NVCC) $(NVCCFLAGS) $^ -lcurand -o $@
 
 #-------------------------
 # Default target
 #-------------------------
-all: $(CPU_EXE) $(GPU_EXE)
+all: $(CPU_BATCH_EXE) $(CUDA_BATCH_EXE)
+
+run_cpu_batch_test: $(CPU_BATCH_EXE)
+	./$(CPU_BATCH_EXE)
+
+test_mnist_cuda_batch: $(CUDA_BATCH_EXE)
 
 #-------------------------
 # Clean build files
@@ -114,4 +136,5 @@ clean:
 	rm -rf $(BUILD_DIR)/test/*.o
 	rm -rf $(BUILD_DIR)/classes/cpu/src/*.o
 	rm -rf $(BUILD_DIR)/classes/cuda/src/*.o
+	rm -rf $(BUILD_DIR)/utils/*.o
 	rm -rf $(BUILD_DIR)/*.o $(BIN_DIR)/*

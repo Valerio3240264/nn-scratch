@@ -1,3 +1,5 @@
+#include <cstddef>
+
 #ifndef MATRICES_OP_H
 #define MATRICES_OP_H
 
@@ -9,52 +11,60 @@
 
 // R = A * B
 // A: N x K, B: K x M, R: N x M
-void Multiply(float* A, float* B, float* R, int N, int K, int M);
+void Multiply(float* A, float* B, float* R, size_t N, size_t K, size_t M);
 
 // R = A * B + C
 // A: N x K, B: K x M, C: N x M, R: N x M
-void MultiplyAndAdd(float* A, float* B, float* C, float* R, int N, int K, int M);
+void MultiplyAndAdd(float* A, float* B, float* C, float* R, size_t N, size_t K, size_t M);
 
 // R += A * B
 // A: N x K, B: K x M, R: N x M
-void InPlaceMultiplyAndAdd(float* A, float* B, float* R, int N, int K, int M);
+void InPlaceMultiplyAndAdd(float* A, float* B, float* R, size_t N, size_t K, size_t M);
 
 // TRANSPOSE A FUNCTIONS
 
 // R = A^T * B
 // A: K x N, B: K x M, R: N x M
-void Multiply_Transpose1(float* A, float* B, float* R, int N, int K, int M);
+void Multiply_Transpose1(float* A, float* B, float* R, size_t N, size_t K, size_t M);
 
 // R = A^T * B + C
 // A: K x N, B: K x M, C: N x M, R: N x M
-void MultiplyAndAdd_Transpose1(float* A, float* B, float* C, float* R, int N, int K, int M);
+void MultiplyAndAdd_Transpose1(float* A, float* B, float* C, float* R, size_t N, size_t K, size_t M);
 
 // R += A^T * B
 // A: K x N, B: K x M, R: N x M
-void InPlaceMultiplyAndAdd_Transpose1(float* A, float* B, float* R, int N, int K, int M);
+void InPlaceMultiplyAndAdd_Transpose1(float* A, float* B, float* R, size_t N, size_t K, size_t M);
 
 // TRANSPOSE B FUNCTIONS
 
 // R = A * B^T
 // A: N x K, B: M x K, R: N x M
-void Multiply_transpose2(float* A, float* B, float* R, int N, int K, int M);
+void Multiply_transpose2(float* A, float* B, float* R, size_t N, size_t K, size_t M);
 
 // R = A * B^T + C
 // A: N x K, B: M x K, C: N x M, R: N x M
-void MultiplyAndAdd_transpose2(float* A, float* B, float* C, float* R, int N, int K, int M);
+void MultiplyAndAdd_transpose2(float* A, float* B, float* C, float* R, size_t N, size_t K, size_t M);
 
 // R += A * B^T
 // A: N x K, B: M x K, R: N x M
-void InPlaceMultiplyAndAdd_transpose2(float* A, float* B, float* R, int N, int K, int M);
+void InPlaceMultiplyAndAdd_transpose2(float* A, float* B, float* R, size_t N, size_t K, size_t M);
 
 // POINTWISE OPERATIONS
 
 // R = A + B
 // A: N x M, B: N x M, R: N x M
-void Matrix_Add(float* A, float* B, float* R, int N, int M);
+void Matrix_Add(float* A, float* B, float* R, size_t N, size_t M);
 
 // A += B
 // A: N x M, B: N x M
-void InPlaceMatrix_Add(float* A, float* B, int N, int M);
+void InPlaceMatrix_Add(float* A, float* B, size_t N, size_t M);
+
+// A += B
+// A: N, B: N x M
+void InPlaceVector_Add_Matrix(float *A, float *B, size_t N, size_t M);
+
+// A += B
+// A: N, B: M x N
+void InPlaceVector_Add_MatrixT(float *A, float *B, size_t N, size_t M);
 
 #endif  // MATRICES_OP_H

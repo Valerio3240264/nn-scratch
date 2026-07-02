@@ -1,51 +1,55 @@
 #ifndef CUDA_SOFTMAX_CUH
 #define CUDA_SOFTMAX_CUH
 
+#include <cstddef>
 #include "../../virtual_classes.h"
+#include "../../enums.h"
 
 /*
-CUDA SOFTMAX CLASS DOCUMENTATION:
-PURPOSE:
-This class has the same purpose of the softmax class but it is used to store the values and gradients in device memory.
+CUDA SOFTMAX CLASS DOCUMENTATION
+Purpose:
+- Device softmax activation with owned probability/gradient buffers.
 
-Note: When using this class, we assume that each class that interacts with this class (in the raw layer) has memory allocated in device memory.
+Current behavior:
+- operator() applies row-wise softmax from predecessor logits into d_value.
+- backward() writes the Jacobian-vector product to the predecessor gradient.
+- get_predictions() copies probabilities to host and returns argmax per row.
 */
 
-class cuda_softmax: public SoftmaxClass{
+class cuda_softmax: public ActivationClass{
   private:
     float *d_value;
     float *d_grad;
-    float *d_max;        // Persistent buffer for max value in forward pass (legacy - not used by new kernel)
-    float *d_exp_sum;    // Persistent buffer for exp sum in forward pass (legacy - not used by new kernel)
-    float *d_dot;        // Persistent buffer for dot product in backward pass (legacy - not used by new kernel)
-    int size;
+    size_t size;
+    size_t batch_size;
     float temperature;
     BackwardClass *pred;
+
+    void check_pred();
   public:
 
     // Constructor
-    cuda_softmax(int size, BackwardClass *pred) ;
-    cuda_softmax(int size, float temperature, BackwardClass *pred) ;
-    cuda_softmax(int size, float *value, BackwardClass *pred) ;
-    cuda_softmax(int size, float *value, float temperature, BackwardClass *pred) ;
+    cuda_softmax(size_t size, size_t batch_size, float temperature, BackwardClass *pred);
     
     // Destructor
     ~cuda_softmax() override;
     
     // Getters
+    Activation_name get_activation_fun() override;
     float *values_pointer() override;
     float *grad_pointer() override;
-    int get_prediction() override;
-    float get_prediction_probability(int index) override;
+    size_t get_output_size() override;
+    size_t get_batch_size() override;
+    float get_temperature();
+    void get_predictions(size_t *predictions);
    
-    // Setters
-    void set_value(float *value) override;
-    void copy_values(float *value) override;
-
     // Methods
-    void backward(float *derivatives) override;
+    void backward() override;
     void zero_grad() override;
     void operator()() override;
+
+    // Setters
+    void set_pred(BackwardClass *pred);
 };
 
 #endif

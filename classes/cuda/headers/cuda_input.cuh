@@ -1,29 +1,32 @@
 #ifndef CUDA_INPUT_CUH
 #define CUDA_INPUT_CUH
 
+#include <cstddef>
 #include "../../virtual_classes.h"
 
 /*
-CUDA INPUT CLASS DOCUMENTATION:
-PURPOSE:
-This class has the same purpose of the input class but it is used to store the values and gradients in device memory.
+CUDA INPUT CLASS DOCUMENTATION
+Purpose:
+- CUDA counterpart of `input` used as a graph leaf.
+- Exposes a non-owning device pointer for values and owns device gradient memory.
 
-Note: When using this class, we assume that each class that interacts with this class (in the raw layer) has memory allocated in device memory.
+Current behavior:
+- d_values is set externally via set_values() (no allocation/copy performed here).
+- d_grad is allocated and zeroed by the class.
+- backward() is a no-op leaf operation.
 */
 
 class cuda_input: public BackwardClass{
   private:
-    float *d_value;
+    float *d_values;
     float *d_grad;
-    int size;
-    BackwardClass *pred;
+    size_t size;
+    size_t batch_size;
 
   public:
 
     // Constructors
-    cuda_input(int size);
-    cuda_input(int size, float *value);
-    cuda_input(int size, BackwardClass *pred);
+    cuda_input(size_t size, size_t batch_size);
 
     // Destructor
     ~cuda_input();
@@ -31,10 +34,15 @@ class cuda_input: public BackwardClass{
     // Getters
     float *values_pointer() override;
     float *grad_pointer() override;
+    size_t get_output_size() override;
+    size_t get_batch_size() override;
+
+    // Setters
+    void set_values(float *new_values);
+    void zero_grad() override;
   
     // Methods
-    void zero_grad() override;
-    void backward(float *derivatives) override;
+    void backward() override;
 };
 
 #endif

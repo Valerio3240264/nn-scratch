@@ -1,72 +1,76 @@
 #include "enums.h"
+#include <cstddef>
 
 #ifndef VIRTUAL_CLASSES_H
 #define VIRTUAL_CLASSES_H
 
-/* BASE INTERFACE FOR ALL LAYERS */
+/*
+Core interface for graph nodes that expose:
+- output values
+- gradient buffer for dL/d(output)
+- output shape metadata (feature size and batch size)
+- backward propagation and gradient reset hooks
+*/
 class BackwardClass {
 	public:
 		virtual ~BackwardClass() = default;
+		// Getters
 		virtual float* values_pointer() = 0;
 		virtual float* grad_pointer() = 0;
-		virtual void backward(float *derivatives) = 0;
+		virtual size_t get_output_size() = 0;
+		virtual size_t get_batch_size() = 0;
+		// Grads
+		virtual void backward() = 0;
 		virtual void zero_grad() = 0;
 };
 
-/* BASE INTERFACE FOR ALL WEIGHTS classes */
+/*
+Extension of BackwardClass for affine modules (weights/bias).
+Implementations are expected to:
+- run forward with operator() using linked pred/next nodes
+- compute parameter and input gradients in backward()
+- update trainable parameters in update()
+*/
 class WeightsClass : public BackwardClass {
 	private:
 		virtual void init_weights(Activation_name function_name) = 0;
 
 	public:
 		virtual ~WeightsClass() = default;
-		virtual void operator()(BackwardClass *in, float *output_pointer) = 0;
+		virtual void operator()() = 0;
 		virtual void update(float learning_rate) = 0;
+		virtual void set_pred(BackwardClass *) = 0;
+		virtual void set_next(BackwardClass *) = 0;
 		virtual void print_weights() = 0;
 		virtual void print_grad_weights() = 0;
 };
 
-/* BASE INTERFACE FOR ALL ACTIVATION classes */
+/*
+Extension of BackwardClass for activation modules.
+operator() must transform the current value buffer in place.
+*/
 class ActivationClass : public BackwardClass {
 	public:
 		virtual ~ActivationClass() = default;
 		virtual void operator()() = 0;
+		virtual Activation_name get_activation_fun() = 0;
 };
 
-/* BASE INTERFACE FOR ALL SOFTMAX classes */
-class SoftmaxClass : public ActivationClass {
-	public:
-		// Destructor
-		virtual ~SoftmaxClass() = default ;
-		// Getters
-		virtual float* values_pointer() = 0 ;
-		virtual float* grad_pointer() = 0 ;
-		virtual int get_prediction() = 0;
-		virtual float get_prediction_probability(int index) = 0;
-		// Setters
-		virtual void set_value(float *value) = 0;
-		virtual void copy_values(float *value) = 0;
-		// Methods
-		virtual void backward(float *derivatives) = 0 ;
-		virtual void zero_grad() = 0 ;
-		virtual void operator()() = 0;
-};
-
-/* BASE INTERFACE FOR ALL LOSS FUNCTIONS */
-class LossClass : public BackwardClass {
+/*
+Loss interface used as the training graph sink.
+Loss implementations own the scalar loss state and write gradients to
+their predecessor node before calling pred->backward().
+*/
+class LossClass{
   public:
     // Destructor
     virtual ~LossClass() = default ;
     // Getters
-    virtual float* values_pointer() = 0 ;
-    virtual float* grad_pointer() = 0 ;
+		virtual float *values_pointer() = 0;
     virtual float get_loss() = 0;
     // Methods
     virtual void operator()(float *target) = 0;
-    virtual void operator()(int target_index) = 0;
-    virtual void operator()() = 0;
-    virtual void zero_grad() = 0 ;
-    virtual void backward(float *derivatives) = 0 ;
+    virtual void operator()(size_t* target_indices) = 0;
 		virtual void backward() = 0;
 };
 #endif

@@ -1,61 +1,61 @@
 #ifndef MSE_LOSS_H
 #define MSE_LOSS_H
 
+#include <cstddef>
 #include "../../virtual_classes.h"
 
 /*
-MSE LOSS CLASS DOCUMENTATION:
-PURPOSE:
-Mean Squared Error loss function for regression tasks.
-Formula: L = (1/n) * sum((prediction - target)^2)
-Gradient: dL/dprediction = 2 * (prediction - target)
+MSE LOSS CLASS DOCUMENTATION
+Purpose:
+- CPU mean squared error loss over batched outputs.
+- Stores target and scalar loss, and writes gradients to predecessor.
 
-Attributes:
-- pred: pointer to the predecessor (output layer)
-- target: pointer to the target values
-- grad: pointer to the gradients
-- loss_value: scalar loss value
-- size: size of the output vector
+Current formula:
+- loss = sum((prediction - target)^2) / size
+  (normalized by feature size, not by batch size)
+- backward writes dL/dy = (2 / size) * (prediction - target)
 
-Methods:
-- operator()(double *target): forward pass with target array
-- operator()(): forward pass with stored target
-- backward(): backward pass (simplified, assumes derivative = 1)
-- backward(double *derivatives): backward pass with incoming derivatives
+Target inputs:
+- operator()(float* target): expects dense target values for all batch elements.
+- operator()(size_t* target_indices): one-hot encodes class indices into target.
 */
 
 class mse_loss : public LossClass {
   private:
     BackwardClass *pred;
     float *target;
-    float *grad;
     float loss_value;
-    int size;
+    size_t size;
+    size_t batch_size;
+
+    // Check pred component matches dimensions
+    void check_pred();
 
   public:
     // Constructors
-    mse_loss(BackwardClass *pred, int size);
-    mse_loss(BackwardClass *pred, int size, float *target);
+    mse_loss( size_t size, 
+              size_t batch_size, 
+              BackwardClass *pred);
     
     // Destructor
     ~mse_loss() override;
     
     // Getters
     float *values_pointer() override;
-    float *grad_pointer() override;
     float get_loss() override;
+    size_t get_size();
+    size_t get_batch_size();
+
+    // Setters
+    void set_pred(BackwardClass *pred);
     
     // Methods
     void operator()(float *target) override;
-    void operator()(int target_index) override;
-    void operator()() override;
-    void zero_grad() override;
-    void backward(float *derivatives) override;
+    void operator()(size_t* target_indices) override;
     void backward() override;
   
     // Testing functions
     void print_loss();
-    void print_grad();
 };
 
 #endif

@@ -2,51 +2,48 @@
 
 #include <iostream>
 #include <cmath>
+#include <cstddef>
 
 using namespace std;
 
-/* CONSTRUCTORS */
-cross_entropy_loss::cross_entropy_loss(BackwardClass *pred, int size) {
-  this->pred = pred;
-  this->size = size;
-  this->grad = new float[size];
-  this->target = nullptr;
-  this->loss_value = 0.0f;
-  
-  for(int i = 0; i < size; i++) {
-    this->grad[i] = 0.0f;
+// Check pred component matches dimensions
+void cross_entropy_loss::check_pred(){
+  if(this->pred == nullptr)
+    return;
+  else if(this->pred->get_output_size() != this->size){
+    throw invalid_argument("Pred component doesn't matches cross_entropy_loss size");
+    exit(1); 
   }
+  else if(this->pred->get_batch_size() != this->batch_size){
+    throw invalid_argument("Pred component doesn't matches cross_entropy_loss batch_size");
+    exit(1); 
+  }
+  return;
 }
 
-cross_entropy_loss::cross_entropy_loss(BackwardClass *pred, int size, float *target) {
-  this->pred = pred;
+/* CONSTRUCTOR */
+cross_entropy_loss::cross_entropy_loss( size_t size, 
+                                        size_t batch_size, 
+                                        BackwardClass *pred) {
   this->size = size;
-  this->grad = new float[size];
-  this->target = target;
+  this->target = new float[size * batch_size];
   this->loss_value = 0.0f;
-  
-  for(int i = 0; i < size; i++) {
-    this->grad[i] = 0.0f;
-  }
+  this->batch_size = batch_size;
+
+  // Assign pointer and check
+  this->pred = pred;
+  this->check_pred();
 }
 
 /* DESTRUCTOR */
 cross_entropy_loss::~cross_entropy_loss() {
-  delete[] this->grad;
-  if(this->target != nullptr) {
-    delete[] this->target;
-  }
+  delete[] this->target;
 }
 
 /* GETTERS */
 // Get the of the current predecessor
 float *cross_entropy_loss::values_pointer() {
-  return this->pred->values_pointer();
-}
-
-// Get the gradient pointer
-float *cross_entropy_loss::grad_pointer() {
-  return this->grad;
+  return nullptr;
 }
 
 // Get the loss value
@@ -54,102 +51,92 @@ float cross_entropy_loss::get_loss() {
   return this->loss_value;
 }
 
+// Get size
+size_t cross_entropy_loss::get_output_size(){
+  return this->size;
+}
+
+// Get batch size
+size_t cross_entropy_loss::get_batch_size(){
+  return this->batch_size;
+}
+
+/* SETTERS */
+// Set pred pointer
+void cross_entropy_loss::set_pred(BackwardClass *pred){
+  this->pred = pred;
+  this->check_pred();
+}
+
 /* METHODS */
-// Forward with one-hot encoded target
 void cross_entropy_loss::operator()(float *target) {
-  if(this->target != nullptr) {
-    delete[] this->target;
-    this->target = nullptr;
+  if(this->pred == nullptr){
+    throw invalid_argument("Error: can't compute cross entropy loss without pred component.");
+    exit(1);
   }
-  this->target = target;
-  this->operator()();
-}
+  this->check_pred();
 
-// Forward with class index (converts to one-hot encoding)
-void cross_entropy_loss::operator()(int target_index) {
-  if(target_index < 0 || target_index >= this->size) {
-    throw std::invalid_argument("Target index is out of bounds");
-  }
-  
-  // Convert target_index to one-hot encoding
-  if(this->target != nullptr) {
-    delete[] this->target;
-  }
-  
-  this->target = new float[this->size];
-  for(int i = 0; i < this->size; i++) {
-    this->target[i] = (i == target_index) ? 1.0f : 0.0f;
-  }
-  
-  this->operator()();
-}
-
-// Forward with stored target
-void cross_entropy_loss::operator()() {
-  if(this->target == nullptr) {
-    throw std::invalid_argument("No target set");
-  }
-  
+  // Evaluate the loss
   float *predictions = this->pred->values_pointer();
   this->loss_value = 0.0f;
+  for(size_t i = 0; i < this->size * this->batch_size; i++) {
+    this->target[i] = target[i];
+    this->loss_value -= this->target[i] * logf(predictions[i] + 1e-15f);
+  }
+  this->loss_value /= static_cast<float>(this->batch_size);
+}
+
+// Forward with class indices (converts to one-hot encoding)
+void cross_entropy_loss::operator()(size_t* target_indices) {
+  if(this->pred == nullptr){
+    throw invalid_argument("Error: can't compute cross entropy loss without pred component.");
+    exit(1);
+  }
+  this->check_pred();
   
-  // Cross-entropy: -sum(target * log(prediction))
-  for(int i = 0; i < this->size; i++) {
-    if(this->target[i] > 0) {
-      // Add small epsilon to avoid log(0)
-      this->loss_value -= this->target[i] * logf(predictions[i] + 1e-15f);
+  // One hot encoding
+  for(size_t row = 0; row < this->batch_size; row++){
+    int idx = target_indices[row];
+    if(idx < 0 || idx >= static_cast<int>(this->size)) {
+      throw std::invalid_argument("Target index is out of bounds");
+    }
+    for(size_t col = 0; col < this->size; col++) {
+      this->target[row * this->size + col] = (static_cast<int>(col) == idx) ? 1.0f : 0.0f;
     }
   }
-}
-
-// Zero the gradient
-void cross_entropy_loss::zero_grad() {
-  for(int i = 0; i < this->size; i++) {
-    this->grad[i] = 0.0f;
-  }
-}
-
-// Standard backward with incoming derivatives
-void cross_entropy_loss::backward(float *derivatives) {
-  if(this->target == nullptr) {
-      throw std::invalid_argument("No target set for backward pass");
-  }
   
+  // Evaluate the loss
   float *predictions = this->pred->values_pointer();
-  
-  // Gradient: (predictions - targets) * derivatives
-  for(int i = 0; i < this->size; i++) {
-    this->grad[i] = (predictions[i] - this->target[i]) * derivatives[i];
+  this->loss_value = 0.0f;
+  for(size_t i = 0; i < this->size * this->batch_size; i++) {
+    this->loss_value -= this->target[i] * logf(predictions[i] + 1e-15f);
   }
-  
-  this->pred->backward(this->grad);
+  this->loss_value /= static_cast<float>(this->batch_size);
 }
 
-// Simplified backward (assumes derivative of loss w.r.t. itself is 1)
+// Backward function 
+// Writes the partial derivatives in the grad of the previous component and calls it
 void cross_entropy_loss::backward() {
-  if(this->target == nullptr) {
-    throw std::invalid_argument("No target set for backward pass");
+  if(this->pred == nullptr){
+    throw invalid_argument("Error: can't compute cross entropy loss backward without pred component.");
+    exit(1);
   }
-  
+  this->check_pred();
+  size_t elements = batch_size * this->size;
   float *predictions = this->pred->values_pointer();
-  
-  // Beautiful simplification: gradient = predictions - one_hot_target
-  for(int i = 0; i < this->size; i++) {
-    this->grad[i] = predictions[i] - this->target[i];
+  float *pred_grad = this->pred->grad_pointer();
+
+  // dL/ds_i = -y_i / s_i (averaged over batch).
+  const float eps = 1e-15f;
+  for(size_t i = 0; i < elements; i++) {
+    float p = predictions[i] > eps ? predictions[i] : eps;
+    pred_grad[i] = -(this->target[i] / p) / static_cast<float>(this->batch_size);
   }
   
-  this->pred->backward(this->grad);
+  this->pred->backward();
 }
 
 /* TESTING FUNCTIONS */
 void cross_entropy_loss::print_loss() {
     std::cout << "Cross-Entropy Loss: " << this->loss_value << std::endl;
-}
-
-void cross_entropy_loss::print_grad() {
-  std::cout << "Gradients: ";
-  for(int i = 0; i < this->size; i++) {
-    std::cout << this->grad[i] << " ";
-  }
-  std::cout << std::endl;
 }

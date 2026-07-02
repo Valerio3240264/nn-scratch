@@ -1,84 +1,97 @@
 #include "utils.cuh"
 
-/* SOFTMAX KERNELS */
-// FORWARD PASS
-__global__ void vector_softmax_kernel(float *__restrict__ d_value, float temperature, int size){
-  // SMEM declaration
-  extern __shared__ float smem[];
-  // Thread index
-  int tid = threadIdx.x;
+#include <cstddef>
+#include <math_constants.h>
 
-  // Local variables (register variables)
-  float local_Z = 0.0f;
-  float local_max = -INFINITY;
-  float tot_Z;
-  float tot_max;
+__global__ void softmax_forward_kernel(
+    const float* __restrict__ input,
+    float* __restrict__ output,
+    float temperature,
+    size_t cols,
+    size_t rows) {
+  extern __shared__ float shared[];
 
-  // Initialize shared memory
-  if(tid < size){
-    smem[tid] = d_value[tid];
-    local_max = d_value[tid];
-  } else {
-    smem[tid] = -INFINITY;
+  const size_t row = blockIdx.x;
+  if (row >= rows) {
+    return;
   }
 
-  // Evaluate local max and local Z
-  for(int i = tid; i < size; i += blockDim.x){
-    float x = d_value[i];
-    if(x > local_max){
-      local_Z *= expf((local_max - x) / temperature);
-      local_max = x;
-    }
-    local_Z += expf((x - local_max) / temperature);
+  const size_t thread = threadIdx.x;
+  const float* row_input = input + row * cols;
+  float* row_output = output + row * cols;
+
+  float local_max = -CUDART_INF_F;
+  for (size_t col = thread; col < cols; col += blockDim.x) {
+    local_max = fmaxf(local_max, row_input[col]);
   }
+  shared[thread] = local_max;
   __syncthreads();
 
-  // Reduce smem until we got the max value
-  for(int stride = blockDim.x / 2; stride > 0; stride /= 2){
-    if(tid < stride && tid + stride < blockDim.x){
-      smem[tid] = fmaxf(smem[tid], smem[tid + stride]);
+  for (size_t stride = blockDim.x / 2; stride > 0; stride >>= 1) {
+    if (thread < stride) {
+      shared[thread] = fmaxf(shared[thread], shared[thread + stride]);
     }
     __syncthreads();
   }
-  // Get the total max value
-  tot_max = smem[0];
+  const float row_max = shared[0];
 
-  // Compute the local Z
-  smem[tid] = local_Z * expf((local_max - tot_max) / temperature);
+  float local_sum = 0.0f;
+  for (size_t col = thread; col < cols; col += blockDim.x) {
+    local_sum += expf((row_input[col] - row_max) / temperature);
+  }
+  shared[thread] = local_sum;
   __syncthreads();
 
-  // Reduce smem until we get the final Z
-  for(int stride = blockDim.x / 2; stride > 0; stride /= 2){
-    if(tid < stride && tid + stride < blockDim.x){
-      smem[tid] += smem[tid + stride];
+  for (size_t stride = blockDim.x / 2; stride > 0; stride >>= 1) {
+    if (thread < stride) {
+      shared[thread] += shared[thread + stride];
     }
     __syncthreads();
   }
-  
-  // Get the final Z
-  tot_Z = smem[0];
+  const float normalization = shared[0];
 
-  // Normalize the values
-  for(int i = tid; i < size; i += blockDim.x){
-    d_value[i] = expf((d_value[i] - tot_max) / temperature) / tot_Z;
+  for (size_t col = thread; col < cols; col += blockDim.x) {
+    row_output[col] =
+        expf((row_input[col] - row_max) / temperature) / normalization;
   }
 }
 
-__global__ void softmax_backward_kernel(float *__restrict__ d_value, float *__restrict__ d_derivatives, float *__restrict__ d_grad, float *__restrict__ d_dot, float temperature, int size){
-  extern __shared__ float shared_dot[];
-  
-  int tid = threadIdx.x;
-  float dot = 0.0f;
-  for(int i = tid; i < size; i += blockDim.x){
-    dot += d_value[i] * d_derivatives[i];
+__global__ void softmax_backward_kernel(
+    const float* __restrict__ values,
+    const float* __restrict__ derivatives,
+    float* __restrict__ gradients,
+    float temperature,
+    size_t cols,
+    size_t rows) {
+  extern __shared__ float shared[];
+
+  const size_t row = blockIdx.x;
+  if (row >= rows) {
+    return;
   }
 
-  block_reduce_sum(dot, shared_dot, tid, blockDim.x);
+  const size_t thread = threadIdx.x;
+  const float* row_values = values + row * cols;
+  const float* row_derivatives = derivatives + row * cols;
+  float* row_gradients = gradients + row * cols;
 
-  dot = shared_dot[0];
-
-  for(int i = tid; i < size; i += blockDim.x){
-    d_grad[i] = d_value[i] * (d_derivatives[i] - dot) / temperature;
+  float local_dot = 0.0f;
+  for (size_t col = thread; col < cols; col += blockDim.x) {
+    local_dot += row_values[col] * row_derivatives[col];
   }
-  
+  shared[thread] = local_dot;
+  __syncthreads();
+
+  for (size_t stride = blockDim.x / 2; stride > 0; stride >>= 1) {
+    if (thread < stride) {
+      shared[thread] += shared[thread + stride];
+    }
+    __syncthreads();
+  }
+  const float dot = shared[0];
+
+  for (size_t col = thread; col < cols; col += blockDim.x) {
+    row_gradients[col] =
+        row_values[col] * (row_derivatives[col] - dot) / temperature;
+  }
 }

@@ -1,40 +1,63 @@
 #ifndef CUDA_ACTIVATION_CUH
 #define CUDA_ACTIVATION_CUH
 
+#include <cstddef>
 #include "../../virtual_classes.h"
 #include "../../enums.h"
 
 /*
-CUDA ACTIVATION CLASS DOCUMENTATION:
-PURPOSE:
-This class has the same purpose of the activation function class but it is used to store the values and gradients in device memory.
+CUDA ACTIVATION CLASS DOCUMENTATION
+Purpose:
+- Device-side activation node with owned value/gradient buffers.
+- Supports TANH, RELU, and LINEAR kernels.
 
-Note: When using this class, we assume that each class that interacts with this class (in the raw layer) has memory allocated in device memory.
+Current behavior:
+- operator() applies activation in-place on d_values.
+- backward() transforms d_grad into predecessor gradient and calls pred->backward().
+- set_pred() rewires predecessor; caller is responsible for shape consistency.
 */
 
 class cuda_activation: public ActivationClass{
   private:
-    float *d_value;
+    size_t size;
+    size_t batch_size;
+    float *d_values;
     float *d_grad;
-    int size;
     BackwardClass *pred;
     Activation_name function_name;
+
+    // Check pred component matches dimensions
+    void check_pred();
+
   public:
 
     // Constructor
-    cuda_activation(int size, float *value, Activation_name function_name, BackwardClass *pred);
+    cuda_activation(
+      size_t size,
+      size_t batch_size,
+      Activation_name function_name,
+      BackwardClass *pred
+    );
   
     // Destructor
     ~cuda_activation();
   
     // Getters
+    Activation_name get_activation_fun() override;
     float *values_pointer() override;
     float *grad_pointer() override;
-  
+    size_t get_output_size() override;
+    size_t get_batch_size() override;
+
+    // Setters
+    void set_pred(BackwardClass *pred);
+
     // Methods
     void operator()() override;
+
+    // Backpropagation functions
     void zero_grad() override;
-    void backward(float *derivatives) override;
+    void backward() override;
 };
 
 #endif
