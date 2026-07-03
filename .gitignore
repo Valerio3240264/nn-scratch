@@ -1,3 +1,15 @@
 ignore.txt
+
+bin
+build
+
 bin/
+
 build/
+build/classes/cpu/src
+build/classes/cuda/src
+build/classes/mlp/src
+build/kernel
+build/profiling
+build/test
+build/utils

@@ -10,13 +10,12 @@
 /*
 MLP CLASS DOCUMENTATION
 Purpose:
-- Orchestrates a stack of `layer` objects plus optional softmax and one loss node.
+- Orchestrates a stack of `layer` objects plus one loss node.
 - Works in CPU or CUDA mode via polymorphic interfaces.
 
 Topology:
 - layers[0] ... layers[num_layers-1]
-- optional softmax after final layer
-- loss node fed by softmax (if present) or last layer output
+- loss node fed by the last layer output
 
 Training workflow:
 1) operator()(input_node) for forward pass
@@ -27,7 +26,7 @@ Training workflow:
 
 Notes:
 - current_loss accumulates across calls until zero_loss().
-- get_predictions() requires softmax to be enabled.
+- get_predictions() requires the final layer activation to be SOFTMAX.
 */
 
 class mlp{
@@ -39,10 +38,6 @@ class mlp{
     size_t output_size;
     size_t batch_size;
     Activation_name *activation_functions;
-    
-    // Softmax
-    bool has_softmax;
-    ActivationClass *softmax_layer;
     
     // Loss function
     Loss_name loss_function;
@@ -64,7 +59,6 @@ class mlp{
         size_t *hidden_sizes,
         Activation_name *activation_functions,
         Loss_name loss_function,
-        bool use_softmax = false,
         bool use_cuda = false);
     
     // Simple constructor (all layers use same activation)

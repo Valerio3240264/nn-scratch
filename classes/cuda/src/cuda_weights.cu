@@ -9,7 +9,7 @@ using namespace std;
 
 // Initialize weights based on the activation function used
 void cuda_weights::init_weights(Activation_name function_name){
-  if(function_name == TANH){
+  if(function_name == TANH || function_name == SOFTMAX){
     allocate_device_memory_xavier<float>(
         &this->d_w,
         this->input_size,

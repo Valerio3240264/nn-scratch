@@ -7,13 +7,11 @@
 #include "../headers/layer.h"
 #include "../../cpu/headers/input.h"
 #include "../../cpu/headers/activation.h"
-#include "../../cpu/headers/softmax.h"
 #include "../../cpu/headers/mse_loss.h"
 #include "../../cpu/headers/cross_entropy_loss.h"
 
 #ifdef __CUDACC__
 #include "../../cuda/headers/cuda_input.cuh"
-#include "../../cuda/headers/cuda_softmax.cuh"
 #include "../../cuda/headers/cuda_mse_loss.cuh"
 #include "../../cuda/headers/cuda_cross_entropy_loss.cuh"
 #include "../../cuda/cuda_manager.cuh"
@@ -70,22 +68,8 @@ void mlp::cuda_init(size_t *hidden_sizes){
     exit(1);
   }
 
-  // Create softmax layer if needed
-  if(this->has_softmax){
-    in = this->layers[this->num_layers - 1]->get_output();
-    this->softmax_layer
-      = new cuda_softmax( this->output_size,
-                          this->batch_size,
-                          1.0f,
-                          in);
-  } else {
-    this->softmax_layer = nullptr;
-  }
-  
-  // Determine loss predecessor (softmax or last layer)
-  in = this->has_softmax ? 
-    (BackwardClass*)this->softmax_layer : 
-    (BackwardClass*)this->layers[this->num_layers - 1]->get_output();
+  // Loss predecessor is always the final layer output.
+  in = this->layers[this->num_layers - 1]->get_output();
   
   // Create loss layer
   if(this->loss_function == MSE){
@@ -151,20 +135,7 @@ void mlp::cpu_init(size_t *hidden_sizes){
     exit(1);
   }
   
-  if(this->has_softmax){
-    in = this->layers[this->num_layers - 1]->get_output();
-    this->softmax_layer
-      = new softmax(this->output_size,
-                    this->batch_size,
-                    1,
-                    in);
-  } else {
-    this->softmax_layer = nullptr;
-  }
-  
-  in = this->has_softmax ? 
-    (BackwardClass*)this->softmax_layer : 
-    (BackwardClass*)this->layers[this->num_layers - 1]->get_output();
+  in = this->layers[this->num_layers - 1]->get_output();
   
   if(this->loss_function == MSE){
     this->loss_layer
@@ -187,7 +158,6 @@ mlp::mlp( size_t input_size,
           size_t *hidden_sizes,
           Activation_name *activation_functions,
           Loss_name loss_function,
-          bool use_softmax,
           bool use_cuda){
   this->input_size = input_size;
   this->output_size = output_size;
@@ -198,7 +168,6 @@ mlp::mlp( size_t input_size,
     this->activation_functions[i] = activation_functions[i];
   }
   this->loss_function = loss_function;
-  this->has_softmax = use_softmax;
   this->current_loss = 0.0f;
   this->layers = new layer*[num_layers];
   this->use_cuda = use_cuda;
@@ -228,7 +197,6 @@ mlp::mlp( size_t input_size,
     this->activation_functions[i] = activation_function;
   }
   this->loss_function = MSE;
-  this->has_softmax = false;
   this->current_loss = 0.0f;
   this->layers = new layer*[num_layers]; 
   this->use_cuda = use_cuda;
@@ -248,9 +216,6 @@ mlp::~mlp(){
   delete[] layers;
   delete[] activation_functions;
 
-  if(this->softmax_layer != nullptr){
-    delete this->softmax_layer;
-  }
   if(this->loss_layer != nullptr){
     delete this->loss_layer;
   }
@@ -258,20 +223,49 @@ mlp::~mlp(){
 
 /* GETTERS */
 void mlp::get_predictions(size_t *predictions){
-  if(!this->has_softmax){
-    throw invalid_argument("Error: can't call get_predictions if softmax is not used.");
+  if(this->activation_functions[this->num_layers - 1] != SOFTMAX){
+    throw invalid_argument("Error: can't call get_predictions if final activation is not SOFTMAX.");
     exit(1);
   }
 
+  BackwardClass *output = this->layers[this->num_layers - 1]->get_output();
+
   if(this->use_cuda){
 #ifdef __CUDACC__
-    static_cast<cuda_softmax*>(this->softmax_layer)->get_predictions(predictions);
+    float *host_values = new float[this->output_size * this->batch_size];
+    copy_device_to_host(
+        host_values,
+        output->values_pointer(),
+        this->output_size * this->batch_size);
+
+    for(size_t row = 0; row < this->batch_size; row++){
+      size_t max_idx = 0;
+      float *row_values = host_values + row * this->output_size;
+      for(size_t col = 1; col < this->output_size; col++){
+        if(row_values[col] > row_values[max_idx]){
+          max_idx = col;
+        }
+      }
+      predictions[row] = max_idx;
+    }
+
+    delete[] host_values;
 #else
     throw invalid_argument("CUDA mode requested but __CUDACC__ is not defined.");
 #endif
   }
   else{
-    static_cast<softmax*>(this->softmax_layer)->get_predictions(predictions);
+    float *values = output->values_pointer();
+    for(size_t row = 0; row < this->batch_size; row++){
+      size_t max_idx = 0;
+      float *row_values = values + row * this->output_size;
+      for(size_t col = 1; col < this->output_size; col++){
+        if(row_values[col] > row_values[max_idx]){
+          max_idx = col;
+        }
+      }
+      predictions[row] = max_idx;
+    }
   }
 }
 
@@ -283,12 +277,6 @@ void mlp::operator()(BackwardClass *in){
   for(int i = 0; i < this->num_layers; i++){
     layers[i]->operator()();
   }
-
-  // Use softmax if needed
-  if(this->has_softmax){
-    this->softmax_layer->operator()();
-  }
-
 }
 
 // Compute loss with target array

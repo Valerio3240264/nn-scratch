@@ -14,7 +14,7 @@ using namespace std;
 // Initialize weights based on the activation function used
 void weights::init_weights(Activation_name function_name){
   float scale;
-  if(function_name == TANH){
+  if(function_name == TANH || function_name == SOFTMAX){
     // Xavier initialization
     scale = sqrtf(6.0f / (this->input_size + this->output_size));
   }

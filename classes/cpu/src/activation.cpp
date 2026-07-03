@@ -97,6 +97,29 @@ void activation::operator()(){
     exit(1);
   }
   this->check_pred();
+
+  if(this->function_name == SOFTMAX){
+    for(size_t row = 0; row < this->batch_size; row++){
+      float *row_values = this->value + row * this->size;
+      float max_val = row_values[0];
+      for(size_t col = 1; col < this->size; col++){
+        if(row_values[col] > max_val){
+          max_val = row_values[col];
+        }
+      }
+
+      float normalization = 0.0f;
+      for(size_t col = 0; col < this->size; col++){
+        normalization += expf(row_values[col] - max_val);
+      }
+
+      for(size_t col = 0; col < this->size; col++){
+        row_values[col] = expf(row_values[col] - max_val) / normalization;
+      }
+    }
+    return;
+  }
+
   size_t elements = this->size * this->batch_size;
   for(size_t i = 0; i < elements; i++){
     if(this->function_name == TANH){
@@ -131,6 +154,24 @@ void activation::backward(){
     exit(1);
   }
   this->check_pred();
+
+  if(this->function_name == SOFTMAX){
+    for(size_t row = 0; row < this->batch_size; row++){
+      float *row_values = this->value + row * this->size;
+      float *row_grad = this->grad + row * this->size;
+
+      float dot = 0.0f;
+      for(size_t col = 0; col < this->size; col++){
+        dot += row_values[col] * row_grad[col];
+      }
+
+      for(size_t col = 0; col < this->size; col++){
+        row_grad[col] = row_values[col] * (row_grad[col] - dot);
+      }
+    }
+    this->pred->backward();
+    return;
+  }
 
   size_t elements = this->size * batch_size;
   for(size_t i = 0; i < elements; i++){

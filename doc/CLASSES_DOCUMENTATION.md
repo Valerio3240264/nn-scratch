@@ -6,7 +6,7 @@ This document describes the **current implementation** under `classes/`.
 
 The training graph is built from nodes implementing shared virtual interfaces:
 
-`Input -> [Weights -> Activation] x N -> [Softmax optional] -> Loss`
+`Input -> [Weights -> Activation] x N -> Loss`
 
 Backward propagation starts at the loss node and recursively calls each predecessor node.
 
@@ -42,24 +42,15 @@ Backward propagation starts at the loss node and recursively calls each predeces
   - `dL/dX = dL/dY * W^T` written to predecessor gradient buffer
   - `grad_b += row_sum(dL/dY)`
 - Initialization:
-  - `TANH`/`LINEAR`: Xavier uniform `sqrt(6/(in+out))`
+  - `TANH`/`SOFTMAX`/`LINEAR`: Xavier uniform `sqrt(6/(in+out))`
   - `RELU`: He uniform `sqrt(2/in)`
 
 ### `activation` (`classes/cpu/headers/activation.h`)
 
 - Owned buffers: `value`, `grad`, both `(batch_size * size)`.
-- Supported functions: `TANH`, `RELU`, `LINEAR`.
-- Forward applies activation in-place on `value`.
-- Backward multiplies incoming gradient by local derivative and propagates to predecessor.
-
-### `softmax` (`classes/cpu/headers/softmax.h`)
-
-- Produces row-wise probabilities from predecessor logits.
-- Supports temperature scaling.
-- Uses stable normalization per row (max-subtraction).
-- Backward computes Jacobian-vector product per row:
-  - `dL/dz_j = s_j * (dL/ds_j - dot(s, dL/ds)) / temperature`
-- `get_predictions()` returns argmax per batch row.
+- Supported functions: `TANH`, `RELU`, `SOFTMAX`, `LINEAR`.
+- Forward applies activation in-place on `value`; `SOFTMAX` uses stable row-wise normalization.
+- Backward multiplies incoming gradient by local derivative and propagates to predecessor; `SOFTMAX` uses its row-wise Jacobian-vector product.
 
 ### `mse_loss` (`classes/cpu/headers/mse_loss.h`)
 
@@ -74,7 +65,7 @@ Backward propagation starts at the loss node and recursively calls each predeces
 
 ### `cross_entropy_loss` (`classes/cpu/headers/cross_entropy_loss.h`)
 
-- Intended for classification with softmax predecessor.
+- Intended for classification with a `SOFTMAX` activation predecessor.
 - Forward options:
   - dense one-hot/soft labels (`float*`)
   - class index targets (`size_t*`, internally one-hot encoded)
@@ -97,20 +88,19 @@ Backward propagation starts at the loss node and recursively calls each predeces
 
 - Owns:
   - dynamic array of `layer*`
-  - optional `softmax_layer`
   - one `loss_layer`
   - accumulated `current_loss`
 - Supports per-layer activations and selectable loss (`MSE` or `CROSS_ENTROPY`).
 - Two constructors:
-  - full configuration (activations + loss + optional softmax + cuda flag)
-  - legacy constructor (single activation for all layers, MSE, no softmax)
+  - full configuration (activations + loss + cuda flag)
+  - legacy constructor (single activation for all layers, MSE)
 - Typical training usage:
   1. `model(input_node)`
   2. `compute_loss(target)`
   3. `backward()`
   4. `update(lr)`
   5. `zero_grad()` / `zero_loss()` as needed
-- `get_predictions()` requires softmax enabled.
+- `get_predictions()` requires the final activation to be `SOFTMAX`.
 
 ## 5. CUDA Components
 
@@ -131,15 +121,8 @@ Backward propagation starts at the loss node and recursively calls each predeces
 ### `cuda_activation` (`classes/cuda/headers/cuda_activation.cuh`)
 
 - Device activation with owned value/gradient buffers.
-- Supports `TANH`, `RELU`, `LINEAR`.
+- Supports `TANH`, `RELU`, `SOFTMAX`, `LINEAR`.
 - Backward launches activation derivative kernels then propagates.
-
-### `cuda_softmax` (`classes/cuda/headers/cuda_softmax.cuh`)
-
-- Device softmax with owned probability/gradient buffers.
-- `operator()` copies predecessor logits to internal buffer and launches softmax.
-- `get_predictions()` copies to host and computes argmax.
-- **Current constraint:** enforces `batch_size == 1`.
 
 ### `cuda_mse_loss` (`classes/cuda/headers/cuda_mse_loss.cuh`)
 
@@ -153,7 +136,7 @@ Backward propagation starts at the loss node and recursively calls each predeces
 - Device cross-entropy loss with device-side target and reduction buffer.
 - Supports dense targets and index targets (one-hot on device).
 - Can own target memory or use external target pointer.
-- Intended for softmax predecessor.
+- Intended for a `SOFTMAX` activation predecessor.
 - **Current constraint:** enforces `batch_size == 1`.
 
 ## 6. Enums (`classes/enums.h`)
@@ -161,4 +144,4 @@ Backward propagation starts at the loss node and recursively calls each predeces
 - `Activation_name`: `RELU`, `SIGMOID`, `TANH`, `SOFTMAX`, `LINEAR`
 - `Loss_name`: `MSE`, `CROSS_ENTROPY`
 
-> Note: `SIGMOID` and `SOFTMAX` exist in enums, but the generic CPU/CUDA `activation` classes currently implement only `TANH`, `RELU`, and `LINEAR`; softmax is a dedicated class.
+> Note: `SIGMOID` exists in the enum but is not implemented by the generic CPU/CUDA `activation` classes.

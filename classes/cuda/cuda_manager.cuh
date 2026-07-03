@@ -62,17 +62,13 @@ __global__ void backward_relu(
 
 /* SOFTMAX KERNELS */
 __global__ void softmax_forward_kernel(
-    const float* __restrict__ input,
-    float* __restrict__ output,
-    float temperature,
+    float* __restrict__ values,
     size_t cols,
     size_t rows);
 
 __global__ void softmax_backward_kernel(
     const float* __restrict__ values,
-    const float* __restrict__ derivatives,
     float* __restrict__ gradients,
-    float temperature,
     size_t cols,
     size_t rows);
 
@@ -194,17 +190,13 @@ void launch_backward_relu(
     size_t size);
 
 void launch_softmax_forward(
-    const float* input,
-    float* output,
-    float temperature,
+    float* values,
     size_t cols,
     size_t rows);
 
 void launch_softmax_backward(
     const float* values,
-    const float* derivatives,
     float* gradients,
-    float temperature,
     size_t cols,
     size_t rows);
 

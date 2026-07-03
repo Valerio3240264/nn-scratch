@@ -10,7 +10,7 @@ NVCCFLAGS = -std=c++17 -O2 -use_fast_math -rdc=true -I.
 BUILD_DIR = build
 BIN_DIR = bin
 
-.PHONY: all run_cpu_batch_test test_mnist_cuda_batch clean
+.PHONY: all run_cpu_batch_test test_cuda clean
 
 #-------------------------
 # Sources and Objects
@@ -20,7 +20,6 @@ BIN_DIR = bin
 CPU_SRC = classes/cpu/src/input.cpp \
           classes/cpu/src/weights.cpp \
           classes/cpu/src/activation.cpp \
-          classes/cpu/src/softmax.cpp \
           classes/cpu/src/mse_loss.cpp \
           classes/cpu/src/cross_entropy_loss.cpp \
 					utils/MatricesOp.cpp
@@ -31,7 +30,6 @@ CPU_OBJ = $(patsubst %.cpp,$(BUILD_DIR)/%.o,$(CPU_SRC))
 CUDA_SRC = classes/cuda/src/cuda_input.cu \
            classes/cuda/src/cuda_weights.cu \
            classes/cuda/src/cuda_activation.cu \
-           classes/cuda/src/cuda_softmax.cu \
            classes/cuda/src/cuda_mse_loss.cu \
            classes/cuda/src/cuda_cross_entropy_loss.cu
 
@@ -51,22 +49,21 @@ MLP_GPU_OBJ = $(patsubst %.cu,$(BUILD_DIR)/%.o,$(MLP_SRC))
 # Kernel operations
 KERNEL_SRC = Kernels/activation.cu \
              Kernels/loss.cu \
-             Kernels/matrix.cu \
-             Kernels/softmax.cu
+             Kernels/matrix.cu
 
 KERNEL_OBJ = $(patsubst %.cu,$(BUILD_DIR)/%.o,$(KERNEL_SRC))
 
 #-------------------------
 # Test files
 #-------------------------
-CPU_BATCH_TEST = $(BUILD_DIR)/test/test_mnist_cpu_batch.o
-CUDA_BATCH_TEST = $(BUILD_DIR)/test/test_mnist_cuda_batch.o
+CPU_BATCH_TEST = $(BUILD_DIR)/test/test_cpu.o
+CUDA_BATCH_TEST = $(BUILD_DIR)/test/test_cuda.o
 
 #-------------------------
 # Executables
 #-------------------------
-CPU_BATCH_EXE = $(BIN_DIR)/test_mnist_cpu_batch.exe
-CUDA_BATCH_EXE = $(BIN_DIR)/test_mnist_cuda_batch.exe
+CPU_BATCH_EXE = $(BIN_DIR)/test_cpu.exe
+CUDA_BATCH_EXE = $(BIN_DIR)/test_cuda.exe
 
 #-------------------------
 # Compile rules
@@ -78,11 +75,11 @@ $(BUILD_DIR)/%.o: %.cpp
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 
 # Compile test objects explicitly
-$(CPU_BATCH_TEST): test/test_mnist_cpu_batch.cpp
+$(CPU_BATCH_TEST): test/test_cpu.cpp
 	@mkdir -p $(dir $@)
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 
-$(CUDA_BATCH_TEST): test/test_mnist_cuda_batch.cu
+$(CUDA_BATCH_TEST): test/test_cuda.cu
 	@mkdir -p $(dir $@)
 	$(NVCC) $(NVCCFLAGS) -c $< -o $@
 
@@ -119,7 +116,7 @@ all: $(CPU_BATCH_EXE) $(CUDA_BATCH_EXE)
 run_cpu_batch_test: $(CPU_BATCH_EXE)
 	./$(CPU_BATCH_EXE)
 
-test_mnist_cuda_batch: $(CUDA_BATCH_EXE)
+test_cuda: $(CUDA_BATCH_EXE)
 
 #-------------------------
 # Clean build files

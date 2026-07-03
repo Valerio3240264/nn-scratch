@@ -9,7 +9,7 @@
 CUDA ACTIVATION CLASS DOCUMENTATION
 Purpose:
 - Device-side activation node with owned value/gradient buffers.
-- Supports TANH, RELU, and LINEAR kernels.
+- Supports TANH, RELU, SOFTMAX, and LINEAR kernels.
 
 Current behavior:
 - operator() applies activation in-place on d_values.

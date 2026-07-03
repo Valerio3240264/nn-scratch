@@ -13,7 +13,7 @@ Purpose:
 Implementation notes:
 - All matrices use compact row-major storage with their logical dimensions.
 - Matrix multiplication kernels use shared-memory tiles and bounds checks.
-- Initialization policy matches CPU (Xavier for TANH/LINEAR, He for RELU).
+- Initialization policy matches CPU (Xavier for TANH/SOFTMAX/LINEAR, He for RELU).
 
 */
 

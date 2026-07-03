@@ -14,8 +14,8 @@ Purpose:
 - Computes backward gradients for W, b, and predecessor input.
 
 Initialization:
-- TANH/LINEAR -> Xavier uniform scale sqrt(6 / (in + out))
-- RELU        -> He uniform scale sqrt(2 / in)
+- TANH/SOFTMAX/LINEAR -> Xavier uniform scale sqrt(6 / (in + out))
+- RELU                -> He uniform scale sqrt(2 / in)
 
 Shapes:
 - w, grad_w: (input_size, output_size)

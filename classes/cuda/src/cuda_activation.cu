@@ -92,6 +92,12 @@ void cuda_activation::operator()(){
   else if(this->function_name == RELU){
     launch_activation_relu(this->d_values, elements);
   }
+  else if(this->function_name == SOFTMAX){
+    launch_softmax_forward(
+        this->d_values,
+        this->size,
+        this->batch_size);
+  }
   else if(this->function_name == LINEAR){
     return;
   }
@@ -117,6 +123,13 @@ void cuda_activation::backward(){
   }
   else if(this->function_name == RELU){
     launch_backward_relu(this->d_values, this->d_grad, elements);
+  }
+  else if(this->function_name == SOFTMAX){
+    launch_softmax_backward(
+        this->d_values,
+        this->d_grad,
+        this->size,
+        this->batch_size);
   }
   else if(this->function_name == LINEAR){
     // The incoming gradient already is the linear activation gradient.

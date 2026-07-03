@@ -273,27 +273,23 @@ inline void launch_backward_relu(
 }
 
 inline void launch_softmax_forward(
-    const float* input,
-    float* output,
-    float temperature,
+    float* values,
     size_t cols,
     size_t rows) {
   softmax_forward_kernel<<<rows, THREADS_PER_BLOCK,
                            THREADS_PER_BLOCK * sizeof(float)>>>(
-      input, output, temperature, cols, rows);
+      values, cols, rows);
   CUDA_CHECK_MANAGER(cudaGetLastError());
 }
 
 inline void launch_softmax_backward(
     const float* values,
-    const float* derivatives,
     float* gradients,
-    float temperature,
     size_t cols,
     size_t rows) {
   softmax_backward_kernel<<<rows, THREADS_PER_BLOCK,
                             THREADS_PER_BLOCK * sizeof(float)>>>(
-      values, derivatives, gradients, temperature, cols, rows);
+      values, gradients, cols, rows);
   CUDA_CHECK_MANAGER(cudaGetLastError());
 }
 

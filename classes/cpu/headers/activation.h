@@ -12,7 +12,7 @@ Purpose:
 - Stores output values and dL/d(output) for a full batch.
 
 Current implementation details:
-- Supported functions: TANH, RELU, LINEAR.
+- Supported functions: TANH, RELU, SOFTMAX, LINEAR.
 - operator() applies the activation in-place on `value`.
 - backward() transforms `grad` into dL/d(input) using current `value`,
   then propagates to pred->backward().
@@ -36,12 +36,10 @@ class activation : public ActivationClass {
 
   public:
     // Constructors
-    activation(
-      size_t size,
-      size_t batch_size,
-      Activation_name function_name,
-      BackwardClass *pred
-    );
+    activation( size_t size,
+                size_t batch_size,
+                Activation_name function_name,
+                BackwardClass *pred);
     
     // Destructor
     ~activation();
